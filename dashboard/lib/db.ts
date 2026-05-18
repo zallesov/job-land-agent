@@ -90,7 +90,7 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   trustworthiness_score: number | null;
 })[] {
   const db = getDb();
-  const conditions: string[] = [];
+  const conditions: string[] = ["j.deleted_at IS NULL"];
   const params: unknown[] = [];
 
   if (filters.status) { conditions.push("j.status = ?"); params.push(filters.status); }
@@ -169,6 +169,11 @@ export function updateJobWorkflowFields(
   updates.push("updated_at = datetime('now')");
   params.push(id);
   db.prepare(`UPDATE jobs SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+}
+
+export function softDeleteJob(id: number): void {
+  const db = getDb();
+  db.prepare("UPDATE jobs SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(id);
 }
 
 export function createResearchCommand(jobId: number): { commandId: number; existing: boolean } {

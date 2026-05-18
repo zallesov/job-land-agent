@@ -99,6 +99,9 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
             domain = _extract_domain(raw.get("applyUrl"))
             company_id = upsert_company(con, n["posted_company_name"], domain)
             existing = get_job_by_url(con, n["url"])
+            if existing is not None and existing["deleted_at"] is not None:
+                result["skipped"] += 1
+                continue
             if existing is None:
                 job_id = insert_job(
                     con,

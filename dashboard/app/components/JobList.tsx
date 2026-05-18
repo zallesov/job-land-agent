@@ -26,6 +26,7 @@ export function JobListClient({
   addJobAction: (fd: FormData) => Promise<any>;
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
   const [addUrl, setAddUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function JobListClient({
         {addError && <div className="text-xs text-red-400 px-3 py-1">{addError}</div>}
         <div className="overflow-y-auto flex-1">
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          {jobs.map((job: any) => (
+          {jobs.filter((job: any) => !deletedIds.has(job.id)).map((job: any) => (
             <button
               key={job.id}
               onClick={() => setSelectedId(job.id)}
@@ -96,7 +97,15 @@ export function JobListClient({
 
       <div className="flex-1 overflow-y-auto p-4">
         {selectedId ? (
-          <JobDetail jobId={selectedId} key={selectedId} updateJobAction={updateJobAction} />
+          <JobDetail
+            jobId={selectedId}
+            key={selectedId}
+            updateJobAction={updateJobAction}
+            onDelete={() => {
+              setDeletedIds((prev) => new Set(prev).add(selectedId));
+              setSelectedId(null);
+            }}
+          />
         ) : (
           <div className="text-gray-600 text-sm mt-8 text-center">Select a job to view details</div>
         )}

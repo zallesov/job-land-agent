@@ -4,10 +4,11 @@ import { CommandButton } from "./CommandButton";
 
 const STATUSES = ["new","interesting","not_interested","researching","researched","draft_ready","applied","interviewing","rejected","archived"];
 
-export function JobDetail({ jobId, updateJobAction }: {
+export function JobDetail({ jobId, updateJobAction, onDelete }: {
   jobId: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateJobAction: (id: number, fields: any) => Promise<void>;
+  onDelete?: () => void;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any | null>(null);
@@ -15,6 +16,7 @@ export function JobDetail({ jobId, updateJobAction }: {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ status: "", comment: "", current_interview_status: "" });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -42,10 +44,26 @@ export function JobDetail({ jobId, updateJobAction }: {
     load();
   }
 
+  async function handleDelete() {
+    if (!confirm("Soft-delete this job? It won't appear again even if re-scraped.")) return;
+    setDeleting(true);
+    await fetch(`/api/jobs/${jobId}`, { method: "DELETE" });
+    onDelete?.();
+  }
+
   return (
     <div className="space-y-4 max-w-2xl">
       <div>
-        <h2 className="text-xl font-bold">{job.title ?? "(no title)"}</h2>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-xl font-bold">{job.title ?? "(no title)"}</h2>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-xs text-red-500 hover:text-red-400 border border-red-800 hover:border-red-600 rounded px-2 py-1 shrink-0 disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
         <p className="text-gray-400 text-sm">{job.posted_company_name} · {job.country} · {job.remote_scope}</p>
         <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
           <span>First seen: {job.first_seen?.slice(0, 10)}</span>
