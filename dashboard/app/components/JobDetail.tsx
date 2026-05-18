@@ -69,7 +69,8 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
           <span>First seen: {job.first_seen?.slice(0, 10)}</span>
           <span>Last seen: {job.last_seen?.slice(0, 10)}</span>
           <span>Provider: {job.provider}</span>
-          {job.apply_url && <a href={job.apply_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Apply</a>}
+          <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-gray-400 underline">Posting</a>
+          {job.apply_url && job.apply_url !== job.url && <a href={job.apply_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Apply</a>}
         </div>
       </div>
 
