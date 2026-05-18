@@ -54,7 +54,21 @@ def daily_digest(db_path: str, run_id: int) -> None:
     ]
 
     if inserted == 0 and failed == 0:
-        lines.append("All providers OK. No new jobs.")
+        providers = con.execute(
+            "SELECT DISTINCT provider FROM jobs "
+            "WHERE first_seen >= datetime('now', '-25 hours')"
+        ).fetchall()
+        # Fall back to showing run_type from recent pipeline_runs
+        recent_runs = con.execute(
+            "SELECT run_type FROM pipeline_runs "
+            "WHERE started_at >= datetime('now', '-25 hours') AND status = 'succeeded'"
+        ).fetchall()
+        provider_names = [r["provider"] for r in providers]
+        if not provider_names:
+            provider_names = [r["run_type"].replace("ingest:", "").split("_jobs_live")[0]
+                              for r in recent_runs]
+        provider_str = ", ".join(f"{p} OK" for p in provider_names) if provider_names else "all providers OK"
+        lines.append(f"Providers: {provider_str}")
     elif inserted > 0:
         new_jobs = con.execute(
             "SELECT j.title, j.posted_company_name, j.country, j.url "
