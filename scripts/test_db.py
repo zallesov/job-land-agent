@@ -54,7 +54,9 @@ def test_indexes_exist():
         "SELECT * FROM sqlite_master WHERE type='index'"
     ).fetchall()}
     for expected_idx in ["idx_jobs_url", "idx_jobs_status", "idx_jobs_provider",
-                         "idx_companies_domain", "idx_agent_commands_status"]:
+                         "idx_jobs_country", "idx_jobs_company_id",
+                         "idx_companies_domain", "idx_companies_normalized_name",
+                         "idx_agent_commands_status", "idx_pipeline_runs_started_at"]:
         assert expected_idx in indexes, f"Missing index: {expected_idx}"
     con.close()
     os.unlink(path)
