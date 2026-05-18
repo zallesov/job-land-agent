@@ -122,6 +122,29 @@ def test_ingest_malformed_json_returns_error():
     os.unlink(db_path)
     os.unlink(run_path)
 
+def test_ingest_merges_source_payload_on_update():
+    db_path = make_db()
+    run_path = make_run_file([SAMPLE_JOB])
+    ingest_run_file(db_path, run_path)
+    # Simulate tag_new_jobs adding light_ tags to source_payload_json
+    con = get_connection(db_path)
+    con.execute(
+        "UPDATE jobs SET source_payload_json = ? WHERE url = ?",
+        (json.dumps({"light_seniority": "senior", "light_ai_relevant": True}), SAMPLE_JOB["url"])
+    )
+    con.commit()
+    con.close()
+    # Re-ingest same job
+    ingest_run_file(db_path, run_path)
+    con = get_connection(db_path)
+    job = con.execute("SELECT source_payload_json FROM jobs WHERE url = ?", (SAMPLE_JOB["url"],)).fetchone()
+    payload = json.loads(job["source_payload_json"])
+    assert payload.get("light_seniority") == "senior", "light_ tags must be preserved on re-ingest"
+    assert payload.get("light_ai_relevant") is True
+    con.close()
+    os.unlink(db_path)
+    os.unlink(run_path)
+
 def test_pipeline_run_record_created():
     db_path = make_db()
     run_path = make_run_file([SAMPLE_JOB])

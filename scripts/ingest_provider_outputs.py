@@ -58,7 +58,7 @@ def normalize_job(raw: dict) -> dict:
         "remote_scope": _detect_remote_scope(
             raw.get("location", ""), raw.get("description", "")
         ),
-        "date_posted": raw.get("postingDate") or raw.get("datePosted") or "",
+        "date_posted": raw.get("postingDate") or raw.get("datePosted") or raw.get("postedRelative") or "",
         "source_payload": extra,
     }
 
@@ -96,7 +96,7 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
             if not n["url"]:
                 result["skipped"] += 1
                 continue
-            domain = _extract_domain(raw.get("company_website") or raw.get("applyUrl"))
+            domain = _extract_domain(raw.get("applyUrl"))
             company_id = upsert_company(con, n["posted_company_name"], domain)
             existing = get_job_by_url(con, n["url"])
             if existing is None:
