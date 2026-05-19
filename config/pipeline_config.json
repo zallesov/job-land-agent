@@ -1,0 +1,18 @@
+{
+  "sources": [
+    {
+      "name": "greenhouse",
+      "skill": "greenhouse-scraper",
+      "script": "scripts/scrape_greenhouse.py",
+      "locations": ["berlin", "spain"],
+      "titles": ["Software Engineer", "AI Engineer", "Engineering Manager"]
+    },
+    {
+      "name": "jobleads",
+      "skill": "jobleads-scraper",
+      "script": "scripts/scrape_jobleads.py",
+      "locations": ["berlin", "spain"],
+      "titles": []
+    }
+  ]
+}
