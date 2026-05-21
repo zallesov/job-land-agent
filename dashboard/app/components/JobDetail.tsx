@@ -230,7 +230,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
       {/* ── ZONE 2: Job Title ── */}
       <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
         <div className="flex items-center gap-2 mb-1">
-          <span className="font-data text-xs font-medium" style={{ color: "var(--text-3)" }}>#{job.id}</span>
+          <span className="font-data font-bold" style={{ color: "var(--text-1)", fontSize: 15 }}>#{job.id}</span>
           {job.provider && (
             <span className="font-data text-xs px-1.5 py-px rounded"
               style={{

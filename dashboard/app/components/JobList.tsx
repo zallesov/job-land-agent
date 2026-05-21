@@ -220,7 +220,7 @@ export function JobListClient({
                 {/* Title */}
                 <div className="text-sm font-semibold truncate leading-tight mb-0.5"
                   style={{ color: "var(--text-1)" }}>
-                  <span className="font-data font-normal mr-1.5" style={{ color: "var(--text-3)", fontSize: 11 }}>
+                  <span className="font-data font-bold mr-1.5" style={{ color: "var(--text-2)", fontSize: 12 }}>
                     #{job.id}
                   </span>
                   {job.title ?? "(no title)"}
