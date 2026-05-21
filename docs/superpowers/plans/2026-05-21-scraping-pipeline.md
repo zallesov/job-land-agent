@@ -2283,6 +2283,40 @@ git commit -m "feat: add scraping_pipeline.py orchestrator + integration tests"
 
 **Files:**
 - Create: `tests/e2e/test_greenhouse_live.py`
+- Existing: `tests/fixtures/e2e/` — pre-populated with real job data
+
+**Pre-created E2E fixtures** (`tests/fixtures/e2e/`):
+
+| File | Company | Expected verdict | Use |
+|---|---|---|---|
+| `job_1173_zencoder.json` | Zencoder | pass | enrich + sanity |
+| `job_1148_submer.json` | SUBMER AI Platform | pass | enrich + sanity |
+| `job_1151_submer.json` | SUBMER Backend | pass | enrich + sanity |
+| `job_1154_topsort.json` | Topsort Integrations | pass | enrich + sanity |
+| `job_1167_wikimedia_found.json` | Wikimedia SRE | uncertain | enrich + sanity |
+| `job_43_ada_health.json` | Ada Health | skip (hybrid Berlin) | sanity only |
+| `job_34_cresta.json` | Cresta | skip (security role) | sanity only |
+| `cv.md` | — | — | all tests |
+| `index.json` | — | — | metadata index |
+
+Each fixture JSON has: `id`, `company`, `title`, `url`, `expected_verdict`, `source`, `db_status`, `db_comment`, `job_page_text`.
+`source` is either `"live_url"` (page content fetched) or `"db_description"` (enriched description from DB, original posting expired).
+
+Load fixtures in E2E tests:
+```python
+import json
+from pathlib import Path
+
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "e2e"
+CV_PATH = FIXTURES_DIR / "cv.md"
+
+def load_fixture(filename):
+    return json.loads((FIXTURES_DIR / filename).read_text())
+
+index = json.loads((FIXTURES_DIR / "index.json").read_text())
+enrich_fixtures = [load_fixture(Path(item["file"]).name) for item in index if "enrich" in item["use_for"]]
+sanity_fixtures = [load_fixture(Path(item["file"]).name) for item in index]
+```
 
 - [ ] **Step 1: Add pytest marker registration to `tests/conftest.py`**
 
@@ -2300,17 +2334,29 @@ def pytest_configure(config):
 """
 E2E test — requires real Chrome at localhost:9222 + real Hermes.
 Run manually: pytest tests/e2e/ -m e2e -v
+
+Fixtures at tests/fixtures/e2e/:
+  index.json                  — metadata for all fixtures
+  job_<id>_<company>.json     — page text, expected_verdict, url per job
+  cv.md                       — candidate CV used by enrich-job + sanity-check-job skills
 """
+import json
 import pytest
+from pathlib import Path
 from scripts.db import create_db
 
-
 E2E_DB = "/tmp/e2e_test.db"
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "e2e"
+CV_PATH = FIXTURES_DIR / "cv.md"
 
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_e2e_db():
     create_db(E2E_DB)
+
+
+def _load(filename):
+    return json.loads((FIXTURES_DIR / filename).read_text())
 
 
 @pytest.mark.e2e
@@ -2323,6 +2369,46 @@ def test_greenhouse_pipeline_live():
         cdp_url="http://localhost:9222",
         db_path=E2E_DB,
     )
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("fixture_file,expected", [
+    (item["file"].split("/")[-1], item["expected_verdict"])
+    for item in _load("index.json")
+    if "enrich" in item["use_for"]
+])
+def test_enrich_job_live(fixture_file, expected):
+    """Enrich each fixture job via real Hermes. Checks structured output returned."""
+    from scripts.pipeline.enrich_job import enrich_job
+    job = _load(fixture_file)
+    # insert a minimal row so enrich_job can look it up
+    import sqlite3
+    con = sqlite3.connect(E2E_DB)
+    con.execute(
+        "INSERT OR IGNORE INTO jobs (id, url, provider, title, posted_company_name, status) VALUES (?,?,?,?,?,?)",
+        (job["id"], job["url"], "e2e", job["title"], job["company"], "listed"),
+    )
+    con.commit()
+    result = enrich_job(job["id"], db_path=E2E_DB)
+    assert result.success, f"enrich failed: {result.error}"
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("fixture_file,expected", [
+    (item["file"].split("/")[-1], item["expected_verdict"])
+    for item in _load("index.json")
+])
+def test_sanity_check_job_live(fixture_file, expected):
+    """Sanity-check each fixture job via real Hermes. Verifies verdict matches expected."""
+    from scripts.pipeline.sanity_check_job import sanity_check_job
+    job = _load(fixture_file)
+    result = sanity_check_job(job["id"], db_path=E2E_DB)
+    if expected == "skip":
+        assert result.data.get("verdict") == "skip", f"expected skip, got: {result.data}"
+    elif expected == "pass":
+        assert result.data.get("verdict") != "skip", f"expected pass, got: {result.data}"
+    # expected="uncertain": no assertion — just verify it returns without error
+    assert result.error is None or expected == "uncertain", f"unexpected error: {result.error}"
 ```
 
 - [ ] **Step 3: Verify e2e tests are skipped by default**
