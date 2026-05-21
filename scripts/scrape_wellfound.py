@@ -333,8 +333,18 @@ def collect_wellfound(page, country: str) -> list[dict]:
 def enrich_wellfound_job(page, row: dict) -> None:
     """Visit job detail page and extract full description + metadata."""
     try:
-        page.goto(row["url"], wait_until="domcontentloaded", timeout=15000)
-        page.wait_for_timeout(1000)
+        page.goto(row["url"], wait_until="domcontentloaded", timeout=20000)
+        # Wait for h1 — confirms the SPA has rendered the job detail view
+        try:
+            page.wait_for_selector("h1", timeout=10000)
+        except Exception:
+            pass
+        # Wait for description container to appear
+        try:
+            page.wait_for_selector('[class*="description"], article, main p', timeout=6000)
+        except Exception:
+            pass
+        page.wait_for_timeout(300)
 
         details = page.evaluate(
             """() => {
