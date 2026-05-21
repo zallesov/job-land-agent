@@ -46,17 +46,17 @@ def _load_config() -> dict:
 
 
 def scrape_jobs(
-    location: dict,  # ignored — provider handles all locations internally
     cdp_url: str,
     titles: list[str] | None = None,
     db_path: str | None = None,
+    _config: dict | None = None,
 ) -> list[ShallowJob]:
-    cfg = _load_config()
+    cfg = _config if _config is not None else _load_config()
     work_style: str = cfg.get("work_style", {}).get("preferred", "remote")
     remote = work_style == "remote"
     search_terms: list[str] = titles or cfg.get("search_terms") or ["Software Engineer"]
 
-    configured_locations: list[dict] = cfg.get("locations", [location])
+    configured_locations: list[dict] = cfg.get("locations", [])
 
     if remote:
         # Map country codes → continents, deduplicate

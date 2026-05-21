@@ -2,13 +2,16 @@
 """
 Scraping pipeline orchestrator.
 
+Each provider script reads config/user.yaml itself and handles all location
+and search-term loops internally. The pipeline calls each provider once.
+
 Usage:
   python3 scripts/scraping_pipeline.py --provider greenhouse
   python3 scripts/scraping_pipeline.py --provider jobleads --titles "Software Engineer,AI Engineer"
 
 Options:
   --provider <name>   Provider: greenhouse | jobleads | wellfound | sprout
-  --titles <str>      Comma-separated job title search terms (optional; overrides config)
+  --titles <str>      Comma-separated title search terms (optional; overrides config)
   --cdp-url <url>     CDP endpoint (default: http://localhost:9222)
   --db <path>         DB path (default: jobs.db in project root)
 """
@@ -33,10 +36,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
 PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout"}
-
-# Providers that handle all locations internally — only call run() once regardless
-# of how many locations are configured.
-LOCATION_INDEPENDENT_PROVIDERS = {"wellfound"}
 
 
 def _queue_research(job_ids: list[int], db_path: str) -> int:
@@ -69,10 +68,9 @@ def _queue_research(job_ids: list[int], db_path: str) -> int:
 
 def run(
     provider: str,
-    location: dict,
-    titles: list[str] | None = None,
     cdp_url: str = DEFAULT_CDP,
     db_path: str = DEFAULT_DB,
+    titles: list[str] | None = None,
     _check_auth=None,
     _scrape_jobs=None,
 ) -> None:
@@ -80,13 +78,11 @@ def run(
         _check_auth = importlib.import_module(f"scripts.providers.{provider}.check_auth").check_auth
     if _scrape_jobs is None:
         _scrape_jobs = importlib.import_module(f"scripts.providers.{provider}.scrape_jobs").scrape_jobs
-    check_auth_fn = _check_auth
-    scrape_jobs_fn = _scrape_jobs
 
-    check_auth_fn(cdp_url)
+    _check_auth(cdp_url)
 
     try:
-        raw_jobs = scrape_jobs_fn(location, cdp_url, titles=titles, db_path=db_path)
+        raw_jobs = _scrape_jobs(cdp_url, titles=titles, db_path=db_path)
     except Exception as e:
         from scripts.telegram_notify import pipeline_failure
         pipeline_failure(provider, "scrape", str(e), "")
@@ -125,15 +121,6 @@ def run(
     )
 
 
-def _load_locations() -> list[dict]:
-    import yaml  # noqa: PLC0415
-    cfg_path = PROJECT_ROOT / "config" / "user.yaml"
-    if not cfg_path.exists():
-        return []
-    cfg = yaml.safe_load(cfg_path.read_text()) or {}
-    return cfg.get("locations", [])
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider", required=True, choices=PROVIDERS)
@@ -141,33 +128,16 @@ def main() -> int:
                         help="Comma-separated job title search terms")
     parser.add_argument("--cdp-url", default=DEFAULT_CDP)
     parser.add_argument("--db", default=DEFAULT_DB)
-    parser.add_argument("--location-city", default=None)
-    parser.add_argument("--location-country", default=None)
-    parser.add_argument("--location-country-code", default=None)
     args = parser.parse_args()
 
     titles = [t.strip() for t in args.titles.split(",")] if args.titles else None
 
-    if args.location_city and args.location_country and args.location_country_code:
-        locations = [{"city": args.location_city, "country": args.location_country,
-                      "country_code": args.location_country_code}]
-    else:
-        locations = _load_locations()
-
-    if not locations:
-        print("No locations found. Use --location-city/--location-country/--location-country-code "
-              "or add locations to config/user.yaml.", file=sys.stderr)
-        return 2
-
-    run_locations = locations[:1] if args.provider in LOCATION_INDEPENDENT_PROVIDERS else locations
-    for location in run_locations:
-        run(
-            provider=args.provider,
-            location=location,
-            titles=titles,
-            cdp_url=args.cdp_url,
-            db_path=args.db,
-        )
+    run(
+        provider=args.provider,
+        cdp_url=args.cdp_url,
+        db_path=args.db,
+        titles=titles,
+    )
     return 0
 
 

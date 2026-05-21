@@ -3,6 +3,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 BERLIN = {"city": "Berlin", "country": "Germany", "country_code": "DE"}
+CONFIG = {"locations": [BERLIN], "work_style": {"preferred": "remote"}, "search_terms": ["Staff Software Engineer"]}
+CDP = "http://localhost:9222"
 
 FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "wellfound" / "scrape_output.json"
 
@@ -14,10 +16,12 @@ FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "wellfound" / "scra
 @patch("scripts.providers.wellfound.scrape_jobs.apply_filters")
 @patch("scripts.providers.wellfound.scrape_jobs.change_location")
 @patch("scripts.providers.wellfound.scrape_jobs.scroll_to_load_all")
+@patch("scripts.providers.wellfound.scrape_jobs.wait_for_search_results")
 @patch("scripts.providers.wellfound.scrape_jobs.sync_playwright")
-def test_returns_shallow_jobs(mock_pw, mock_scroll, mock_loc, mock_filters, mock_collect):
+def test_returns_shallow_jobs(mock_pw, mock_wait, mock_scroll, mock_loc, mock_filters, mock_collect):
     raw = json.loads(FIXTURE.read_text())
     mock_collect.return_value = raw
+    mock_wait.return_value = True
     page = MagicMock()
     ctx = MagicMock()
     ctx.new_page.return_value = page
@@ -26,7 +30,7 @@ def test_returns_shallow_jobs(mock_pw, mock_scroll, mock_loc, mock_filters, mock
     mock_pw.return_value.__enter__.return_value.chromium.connect_over_cdp.return_value = browser
 
     from scripts.providers.wellfound.scrape_jobs import scrape_jobs
-    jobs = scrape_jobs(BERLIN, "http://localhost:9222")
+    jobs = scrape_jobs(CDP, _config=CONFIG)
     assert len(jobs) == 1
     assert jobs[0].provider == "wellfound"
     assert jobs[0].title == "Staff Software Engineer"
@@ -38,13 +42,15 @@ def test_returns_shallow_jobs(mock_pw, mock_scroll, mock_loc, mock_filters, mock
 @patch("scripts.providers.wellfound.scrape_jobs.apply_filters")
 @patch("scripts.providers.wellfound.scrape_jobs.change_location")
 @patch("scripts.providers.wellfound.scrape_jobs.scroll_to_load_all")
+@patch("scripts.providers.wellfound.scrape_jobs.wait_for_search_results")
 @patch("scripts.providers.wellfound.scrape_jobs.sync_playwright")
-def test_irrelevant_jobs_filtered(mock_pw, mock_scroll, mock_loc, mock_filters, mock_collect):
+def test_irrelevant_jobs_filtered(mock_pw, mock_wait, mock_scroll, mock_loc, mock_filters, mock_collect):
     mock_collect.return_value = [
         {"provider": "wellfound", "company": "Corp", "title": "Head of Sales",
          "url": "http://x.com", "location": "Remote", "country": "Germany",
          "postingDate": "", "salaryRaw": "", "equityRaw": ""}
     ]
+    mock_wait.return_value = True
     page = MagicMock()
     ctx = MagicMock()
     ctx.new_page.return_value = page
@@ -53,5 +59,5 @@ def test_irrelevant_jobs_filtered(mock_pw, mock_scroll, mock_loc, mock_filters, 
     mock_pw.return_value.__enter__.return_value.chromium.connect_over_cdp.return_value = browser
 
     from scripts.providers.wellfound.scrape_jobs import scrape_jobs
-    jobs = scrape_jobs(BERLIN, "http://localhost:9222")
+    jobs = scrape_jobs(CDP, _config=CONFIG)
     assert len(jobs) == 1 and jobs[0].status == "skip"

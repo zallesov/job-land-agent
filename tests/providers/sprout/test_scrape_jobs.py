@@ -3,6 +3,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 BERLIN = {"city": "Berlin", "country": "Germany", "country_code": "DE"}
+CONFIG = {"locations": [BERLIN], "search_terms": ["Staff AI Platform Engineer"]}
+CDP = "http://localhost:9222"
 
 FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "sprout" / "scrape_output.json"
 
@@ -23,7 +25,7 @@ def test_returns_shallow_jobs(mock_pw, mock_collect):
     mock_pw.return_value.__enter__.return_value.chromium.connect_over_cdp.return_value = browser
 
     from scripts.providers.sprout.scrape_jobs import scrape_jobs
-    jobs = scrape_jobs(BERLIN, "http://localhost:9222")
+    jobs = scrape_jobs(CDP, _config=CONFIG)
     assert len(jobs) == 1
     assert jobs[0].provider == "sprout"
     assert jobs[0].title == "Staff AI Platform Engineer"
@@ -47,5 +49,5 @@ def test_irrelevant_jobs_filtered(mock_pw, mock_collect):
     mock_pw.return_value.__enter__.return_value.chromium.connect_over_cdp.return_value = browser
 
     from scripts.providers.sprout.scrape_jobs import scrape_jobs
-    jobs = scrape_jobs(BERLIN, "http://localhost:9222")
+    jobs = scrape_jobs(CDP, _config=CONFIG)
     assert len(jobs) == 1 and jobs[0].status == "skip"

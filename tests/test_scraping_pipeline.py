@@ -2,6 +2,7 @@ from unittest.mock import patch, MagicMock
 from scripts.pipeline.types import ShallowJob, HermesResult
 
 BERLIN = {"city": "Berlin", "country": "Germany", "country_code": "DE"}
+CDP = "http://localhost:9222"
 
 
 def _job(company="Acme", title="SWE", url="http://x.com"):
@@ -33,14 +34,11 @@ def test_happy_path(db_path):
         )
 
         from scripts.scraping_pipeline import run
-        run(
-            provider="greenhouse", location=BERLIN,
-            cdp_url="http://localhost:9222", db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
-        )
+        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
-    mock_check_auth.assert_called_once_with("http://localhost:9222")
-    mock_scrape.assert_called_once_with(BERLIN, "http://localhost:9222", titles=None, db_path=db_path)
+    mock_check_auth.assert_called_once_with(CDP)
+    mock_scrape.assert_called_once_with(CDP, titles=None, db_path=db_path)
     mock_dedup.assert_called_once()
     mock_ingest.assert_called_once()
     mock_enrich.assert_called_once_with(jid, db_path=db_path)
@@ -56,11 +54,8 @@ def test_auth_error_stops_pipeline(db_path):
     import pytest
     from scripts.scraping_pipeline import run
     with pytest.raises(AuthError):
-        run(
-            provider="greenhouse", location=BERLIN,
-            cdp_url="http://localhost:9222", db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
-        )
+        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
     mock_scrape.assert_not_called()
 
 
@@ -80,11 +75,8 @@ def test_enrich_failure_skips_sanity_for_that_job(db_path):
         )
 
         from scripts.scraping_pipeline import run
-        run(
-            provider="greenhouse", location=BERLIN,
-            cdp_url="http://localhost:9222", db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
-        )
+        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
     mock_sanity.assert_not_called()
     failures = mock_notify.call_args[1]["enrich_failures"]
@@ -106,11 +98,8 @@ def test_research_commands_queued_for_new_jobs(db_path):
         mock_sanity.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
 
         from scripts.scraping_pipeline import run
-        run(
-            provider="greenhouse", location=BERLIN,
-            cdp_url="http://localhost:9222", db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
-        )
+        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
     import sqlite3, json as _json
     con = sqlite3.connect(db_path)
@@ -124,7 +113,6 @@ def test_research_commands_queued_for_new_jobs(db_path):
 
 def test_research_not_duplicated_if_already_pending(db_path):
     import sqlite3, json as _json
-    # Pre-insert a pending research command for job 20
     con = sqlite3.connect(db_path)
     con.execute(
         "INSERT INTO agent_commands (command_type, payload_json, status, created_by) "
@@ -147,11 +135,8 @@ def test_research_not_duplicated_if_already_pending(db_path):
         mock_sanity.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
 
         from scripts.scraping_pipeline import run
-        run(
-            provider="greenhouse", location=BERLIN,
-            cdp_url="http://localhost:9222", db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
-        )
+        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
     con = sqlite3.connect(db_path)
     count = con.execute(
@@ -159,7 +144,7 @@ def test_research_not_duplicated_if_already_pending(db_path):
         "AND json_extract(payload_json,'$.job_id')=20"
     ).fetchone()[0]
     con.close()
-    assert count == 1  # not duplicated
+    assert count == 1
 
 
 def test_titles_passed_to_scrape_jobs(db_path):
@@ -171,12 +156,12 @@ def test_titles_passed_to_scrape_jobs(db_path):
          patch("scripts.scraping_pipeline.send_daily_digest"):
         from scripts.scraping_pipeline import run
         run(
-            provider="greenhouse", location=BERLIN,
+            provider="greenhouse",
             titles=["AI Engineer", "Software Engineer"],
-            cdp_url="http://localhost:9222", db_path=db_path,
+            cdp_url=CDP, db_path=db_path,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
         )
 
     mock_scrape.assert_called_once_with(
-        BERLIN, "http://localhost:9222", titles=["AI Engineer", "Software Engineer"], db_path=db_path
+        CDP, titles=["AI Engineer", "Software Engineer"], db_path=db_path
     )
