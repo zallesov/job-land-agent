@@ -66,10 +66,10 @@ def _search_via_inputs(page, title: str, location: str) -> bool:
         page.keyboard.press("Escape")
         page.wait_for_timeout(300)
 
-        # Location input — click via JS to avoid chip overlay, then type
+        # Location input — click via JS to avoid chip overlay, clear, then type
         page.evaluate("""() => {
             const input = document.querySelector('input[placeholder*="Anywhere"], input[placeholder*="Location"]');
-            if (input) input.focus();
+            if (input) { input.focus(); input.value = ''; input.dispatchEvent(new Event('input', {bubbles: true})); }
         }""")
         page.wait_for_timeout(300)
         page.keyboard.type(location, delay=50)
