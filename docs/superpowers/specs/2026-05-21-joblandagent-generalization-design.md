@@ -25,10 +25,19 @@ user:
 # CV in markdown format — used by enrich-job and sanity-check-job Hermes skills
 cv_path: "config/cv.md"
 
-# Target job locations — must match supported preset keys (see below)
+# Target job locations — any city or region name; country required for feed-based scrapers
 locations:
-  - berlin
-  - spain
+  - city: "Berlin"
+    country: "Germany"
+    country_code: "DE"
+  - city: "Barcelona"
+    country: "Spain"
+    country_code: "ES"
+
+# Work style preference — used by sanity_check_job and job-research for scoring
+work_style:
+  preferred: "remote"          # remote | hybrid | onsite
+  willing_to_relocate: false
 
 # Job title search terms — used by Sprout and JobLeads scrapers
 search_terms:
@@ -48,7 +57,11 @@ providers:
 db_path: "jobs.db"
 ```
 
-**Supported location presets:** `berlin`, `spain` — the only values currently supported. Each scraper has a `LOCATION_PRESETS` dict that must contain the key. The onboarding skill validates input against this list and tells users unsupported locations require a code contribution. Adding a new location means adding it to each scraper's `LOCATION_PRESETS` dict — documented in CONTRIBUTING.md (out of scope here, but noted in onboarding).
+**Locations:** Any city or region. Each entry has `city`, `country`, and `country_code` (ISO 3166-1 alpha-2). `country_code` is needed by feed-based scrapers (Greenhouse, JobLeads) for URL parameters. UI-based scrapers (Wellfound, Sprout) use `city` as the search string directly.
+
+**How locations flow to scrapers:** `LOCATION_PRESETS` dicts in the legacy scraper scripts are kept as-is for backward compatibility but are bypassed — the new `scrape_jobs(location, cdp_url)` interface receives a location dict from `user.yaml` directly. Each provider's `scrape_jobs.py` is updated to accept `location: dict` (with `city`, `country`, `country_code`) instead of a string key lookup.
+
+**Work style** (`remote`/`hybrid`/`onsite`) is read from `user.yaml` by the `sanity-check-job` Hermes skill and `job-research` skill. The sanity check uses it as a hard filter when the posting is clearly incompatible (e.g., user wants remote-only and job is explicitly on-site only). The research skill uses it as a scoring dimension.
 
 **`pipeline_config.json` is eliminated** — delete the file. `run-scraping-pipeline` skill reads `config/user.yaml` directly. Add `config/pipeline_config.json` to `.gitignore` as well to avoid accidental re-creation.
 
