@@ -44,11 +44,27 @@ Capture: `apply_url` (fallback to `url`), `title`, `posted_company_name`, `descr
 
 ---
 
-## Step 2: Read CV content
+## Step 2: Read user config and CV content
 
 ```bash
-cat /Users/zall/interviews/cv_master_content.md
+python3 -c "
+import yaml
+d = yaml.safe_load(open('config/user.yaml'))
+u = d['user']
+print('NAME:', u['name'])
+print('EMAIL:', u['email'])
+print('LINKEDIN:', u['linkedin_url'])
+print('RESUME_PDF:', u['resume_pdf_path'])
+print('CV_PATH:', d['cv_path'])
+"
 ```
+
+Then read the CV:
+```bash
+python3 -c "import yaml; print(yaml.safe_load(open('config/user.yaml'))['cv_path'])" | xargs cat
+```
+
+Capture: `name`, `email`, `linkedin_url`, `resume_pdf_path`, `cv_path`, and the CV text.
 
 ---
 
@@ -72,22 +88,23 @@ Generate a JSON object with ALL content needed to fill the form. Use the CV cont
 
 ### Fixed fields (always the same):
 
+Populate the fixed fields from the values read in Step 2:
 ```json
 {
-  "first_name": "Aleksandr",
-  "last_name": "Zalesov",
-  "full_name": "Aleksandr Zalesov",
-  "email": "zallesov@gmail.com",
+  "first_name": "<first word of name from user.yaml>",
+  "last_name": "<remaining words of name from user.yaml>",
+  "full_name": "<name from user.yaml>",
+  "email": "<email from user.yaml>",
   "phone": "",
-  "location": "Malaga, Spain",
-  "country": "Spain",
-  "linkedin_url": "https://www.linkedin.com/in/zallesov/",
-  "website_url": "https://zall.dev",
+  "location": "<location from CV or leave blank>",
+  "country": "<country from user.yaml locations[0].country or CV>",
+  "linkedin_url": "<linkedin_url from user.yaml>",
+  "website_url": "<personal website URL — infer from CV or leave blank>",
   "github_url": "",
-  "resume_path": "/Users/zall/interviews/ALEKSANDR_ZALESOV-CV-05.2026.pdf",
-  "years_of_experience": "18",
-  "work_authorization": "No — requires work permit / visa sponsorship (EU citizen, based Spain/Germany)",
-  "willing_to_relocate": "No — fully remote preferred",
+  "resume_path": "<resume_pdf_path from user.yaml>",
+  "years_of_experience": "<infer from CV>",
+  "work_authorization": "<infer from CV — citizenship, visa status, work permit needs>",
+  "willing_to_relocate": "<based on work_style.willing_to_relocate in user.yaml>",
   "salary_expectation": "",
   "how_did_you_hear": "Job board",
   "start_date": "Immediately / 2 weeks notice"
@@ -117,7 +134,7 @@ Write all generated content to `/tmp/apply_fields_<job_id>.json`.
 Run the filler script:
 
 ```bash
-python3 /Users/zall/interviews/scripts/apply_job_filler.py \
+python3 scripts/apply_job_filler.py \
   --apply-url "<apply_url>" \
   --fields /tmp/apply_fields_<job_id>.json \
   --job-id <job_id> \
@@ -176,7 +193,7 @@ import json, urllib.request, os
 from pathlib import Path
 
 # Load env
-env_file = Path.home() / '.hermes' / 'profiles' / 'interviewprep' / '.env'
+env_file = Path('hermes-profile') / '.env'
 token, chat_id = None, None
 for line in env_file.read_text().splitlines():
     if line.startswith('TELEGRAM_BOT_TOKEN='):
@@ -237,7 +254,7 @@ con.close()
 
 ### If a required field can't be auto-detected (e.g. custom platform):
 - Fill what you can
-- List the unknown fields in the Telegram message so Zall can fill them manually
+- List the unknown fields in the Telegram message so the user can fill them manually
 - Still mark command succeeded if browser is open
 
 ---
