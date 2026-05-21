@@ -34,7 +34,7 @@ const VERDICT_CONFIG: Record<string, { bg: string; accent: string; label: string
     labelColor: "var(--text-2)",
   },
 };
-const DEFAULT_VERDICT = { bg: "var(--surface)", accent: "var(--border-hi)", label: "NOT ASSESSED", labelColor: "var(--text-3)" };
+const DEFAULT_VERDICT = { bg: "var(--surface)", accent: "var(--border-hi)", label: "NOT RESEARCHED", labelColor: "var(--text-3)" };
 
 function ScoreBlock({ label, value, color }: { label: string; value: number | null | undefined; color: string }) {
   if (value == null) return null;
