@@ -1,6 +1,8 @@
 from unittest.mock import patch, MagicMock
 from scripts.pipeline.types import ShallowJob, HermesResult
 
+BERLIN = {"city": "Berlin", "country": "Germany", "country_code": "DE"}
+
 
 def _job(company="Acme", title="SWE", url="http://x.com"):
     return ShallowJob(
@@ -32,13 +34,13 @@ def test_happy_path(db_path):
 
         from scripts.scraping_pipeline import run
         run(
-            provider="greenhouse", location="berlin",
+            provider="greenhouse", location=BERLIN,
             cdp_url="http://localhost:9222", db_path=db_path,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
         )
 
     mock_check_auth.assert_called_once_with("http://localhost:9222")
-    mock_scrape.assert_called_once_with("berlin", "http://localhost:9222")
+    mock_scrape.assert_called_once_with(BERLIN, "http://localhost:9222", titles=None)
     mock_dedup.assert_called_once()
     mock_ingest.assert_called_once()
     mock_enrich.assert_called_once_with(jid, db_path=db_path)
@@ -55,7 +57,7 @@ def test_auth_error_stops_pipeline(db_path):
     from scripts.scraping_pipeline import run
     with pytest.raises(AuthError):
         run(
-            provider="greenhouse", location="berlin",
+            provider="greenhouse", location=BERLIN,
             cdp_url="http://localhost:9222", db_path=db_path,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
         )
@@ -79,7 +81,7 @@ def test_enrich_failure_skips_sanity_for_that_job(db_path):
 
         from scripts.scraping_pipeline import run
         run(
-            provider="greenhouse", location="berlin",
+            provider="greenhouse", location=BERLIN,
             cdp_url="http://localhost:9222", db_path=db_path,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
         )
@@ -87,3 +89,23 @@ def test_enrich_failure_skips_sanity_for_that_job(db_path):
     mock_sanity.assert_not_called()
     failures = mock_notify.call_args[1]["enrich_failures"]
     assert (jid, "timeout") in failures
+
+
+def test_titles_passed_to_scrape_jobs(db_path):
+    mock_check_auth = MagicMock()
+    mock_scrape = MagicMock(return_value=[])
+
+    with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[]), \
+         patch("scripts.scraping_pipeline.ingest_jobs", return_value=[]), \
+         patch("scripts.scraping_pipeline.send_daily_digest"):
+        from scripts.scraping_pipeline import run
+        run(
+            provider="greenhouse", location=BERLIN,
+            titles=["AI Engineer", "Software Engineer"],
+            cdp_url="http://localhost:9222", db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
+        )
+
+    mock_scrape.assert_called_once_with(
+        BERLIN, "http://localhost:9222", titles=["AI Engineer", "Software Engineer"]
+    )

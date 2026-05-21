@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+BERLIN = {"city": "Berlin", "country": "Germany", "country_code": "DE"}
+
 FIXTURE = Path(__file__).parent.parent.parent / "fixtures" / "jobleads" / "scrape_output.json"
 
 # Fixture has 2 jobs:
@@ -23,7 +25,7 @@ def test_returns_shallow_jobs(mock_pw, mock_collect):
     mock_pw.return_value.__enter__.return_value.chromium.connect_over_cdp.return_value = browser
 
     from scripts.providers.jobleads.scrape_jobs import scrape_jobs
-    jobs = scrape_jobs("berlin", "http://localhost:9222")
+    jobs = scrape_jobs(BERLIN, "http://localhost:9222")
     assert len(jobs) == 2
     assert all(j.provider == "jobleads" for j in jobs)
     assert all("::" in j.dedup_key for j in jobs)
@@ -48,5 +50,5 @@ def test_irrelevant_jobs_filtered(mock_pw, mock_collect):
     mock_pw.return_value.__enter__.return_value.chromium.connect_over_cdp.return_value = browser
 
     from scripts.providers.jobleads.scrape_jobs import scrape_jobs
-    jobs = scrape_jobs("berlin", "http://localhost:9222")
+    jobs = scrape_jobs(BERLIN, "http://localhost:9222")
     assert jobs == []

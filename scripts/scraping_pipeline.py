@@ -3,14 +3,14 @@
 Scraping pipeline orchestrator.
 
 Usage:
-  python3 scripts/scraping_pipeline.py --provider greenhouse --location berlin
-  python3 scripts/scraping_pipeline.py --provider jobleads --location spain
-  python3 scripts/scraping_pipeline.py --provider wellfound --location berlin
-  python3 scripts/scraping_pipeline.py --provider sprout --location berlin
+  python3 scripts/scraping_pipeline.py --provider greenhouse --location Berlin
+  python3 scripts/scraping_pipeline.py --provider jobleads --location Barcelona \
+    --titles "Software Engineer,AI Engineer"
 
 Options:
   --provider <name>   Provider: greenhouse | jobleads | wellfound | sprout
-  --location <name>   Location preset: berlin | spain
+  --location <city>   City name — must match a location entry in config/user.yaml
+  --titles <str>      Comma-separated job title search terms (optional)
   --cdp-url <url>     CDP endpoint (default: http://localhost:9222)
   --db <path>         DB path (default: jobs.db in project root)
 """
@@ -37,7 +37,8 @@ PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout"}
 
 def run(
     provider: str,
-    location: str,
+    location: dict,
+    titles: list[str] | None = None,
     cdp_url: str = DEFAULT_CDP,
     db_path: str = DEFAULT_DB,
     _check_auth=None,
@@ -53,7 +54,7 @@ def run(
     check_auth_fn(cdp_url)
 
     try:
-        raw_jobs = scrape_jobs_fn(location, cdp_url)
+        raw_jobs = scrape_jobs_fn(location, cdp_url, titles=titles)
     except Exception as e:
         from scripts.telegram_notify import pipeline_failure
         pipeline_failure(provider, "scrape", str(e), "")
@@ -93,13 +94,44 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider", required=True, choices=PROVIDERS)
-    parser.add_argument("--location", required=True)
+    parser.add_argument("--location", required=True,
+                        help="City name matching a location entry in config/user.yaml")
+    parser.add_argument("--titles", default=None,
+                        help="Comma-separated job title search terms")
     parser.add_argument("--cdp-url", default=DEFAULT_CDP)
     parser.add_argument("--db", default=DEFAULT_DB)
     args = parser.parse_args()
+
+    import yaml
+    config_path = PROJECT_ROOT / "config" / "user.yaml"
+    if not config_path.exists():
+        print(
+            f"ERROR: {config_path} not found. "
+            "Copy config/user.yaml.example to config/user.yaml and fill it in.",
+            file=sys.stderr,
+        )
+        return 1
+    config = yaml.safe_load(config_path.read_text())
+    location_dict = next(
+        (loc for loc in config.get("locations", [])
+         if loc["city"].lower() == args.location.lower()),
+        None,
+    )
+    if location_dict is None:
+        available = [loc["city"] for loc in config.get("locations", [])]
+        print(
+            f"ERROR: Location {args.location!r} not found in config/user.yaml. "
+            f"Available: {available}",
+            file=sys.stderr,
+        )
+        return 1
+
+    titles = [t.strip() for t in args.titles.split(",")] if args.titles else None
+
     run(
         provider=args.provider,
-        location=args.location,
+        location=location_dict,
+        titles=titles,
         cdp_url=args.cdp_url,
         db_path=args.db,
     )
