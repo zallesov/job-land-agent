@@ -41,6 +41,13 @@ const VERDICT_LABEL: Record<string, string> = {
   "Skip":               "text-[var(--text-3)]",
 };
 
+export const PROVIDER_COLORS: Record<string, { bg: string; color: string }> = {
+  greenhouse: { bg: "rgba(34,197,94,0.13)",   color: "#4ade80" },
+  jobleads:   { bg: "rgba(251,146,60,0.13)",  color: "#fb923c" },
+  wellfound:  { bg: "rgba(167,139,250,0.13)", color: "#a78bfa" },
+  sprout:     { bg: "rgba(45,212,191,0.13)",  color: "#2dd4bf" },
+};
+
 const STATUS_PRIORITY: Record<string, number> = {
   interviewing: 0, applied: 1, draft_ready: 2, interesting: 3,
   researched: 4, new: 5, listed: 5.5, researching: 6, not_interested: 7, rejected: 8, archived: 9,
@@ -213,17 +220,25 @@ export function JobListClient({
                 {/* Title */}
                 <div className="text-sm font-semibold truncate leading-tight mb-0.5"
                   style={{ color: "var(--text-1)" }}>
+                  <span className="font-data font-normal mr-1.5" style={{ color: "var(--text-3)", fontSize: 11 }}>
+                    #{job.id}
+                  </span>
                   {job.title ?? "(no title)"}
                 </div>
 
                 {/* Company + location + source */}
-                <div className="text-xs truncate mb-2" style={{ color: "var(--text-2)" }}>
+                <div className="flex items-center gap-1.5 text-xs truncate mb-2" style={{ color: "var(--text-2)" }}>
                   {job.posted_company_name ?? "—"}
                   {job.country ? ` · ${job.country}` : ""}
                   {job.remote_scope ? ` · ${job.remote_scope}` : ""}
                   {job.provider && (
-                    <span className="font-data ml-1.5" style={{ color: "var(--text-3)", fontSize: 10 }}>
-                      [{job.provider}]
+                    <span className="font-data shrink-0 px-1 py-px rounded"
+                      style={{
+                        background: PROVIDER_COLORS[job.provider]?.bg ?? "var(--surface-hi)",
+                        color: PROVIDER_COLORS[job.provider]?.color ?? "var(--text-3)",
+                        fontSize: 10,
+                      }}>
+                      {job.provider}
                     </span>
                   )}
                 </div>

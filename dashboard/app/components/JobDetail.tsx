@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { CommandButton } from "./CommandButton";
-import { STATUS_COLORS } from "./JobList";
+import { STATUS_COLORS, PROVIDER_COLORS } from "./JobList";
 
 const STATUSES = ["new","interesting","not_interested","researching","researched","draft_ready","applied","interviewing","rejected","archived"];
 
@@ -78,6 +78,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
   const [form, setForm] = useState({ status: "", comment: "", current_interview_status: "" });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [applying, setApplying] = useState(false);
   const [interviewStatus, setInterviewStatus] = useState("");
 
@@ -119,14 +120,12 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
   }
 
   async function handleDelete() {
-    if (!confirm("Soft-delete this job? It won't appear again even if re-scraped.")) return;
     setDeleting(true);
     await fetch(`/api/jobs/${jobId}`, { method: "DELETE" });
     onDelete?.();
   }
 
   async function handleApply() {
-    if (!confirm("Launch Apply agent? It will open Chrome, fill the form, and wait for you to submit.")) return;
     setApplying(true);
     try {
       await fetch("/api/commands", {
@@ -202,11 +201,27 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
                   {applying ? "…" : "Apply"}
                 </button>
               )}
-              <button onClick={handleDelete} disabled={deleting}
-                className="text-xs rounded px-2 py-1.5 transition-colors disabled:opacity-40"
-                style={{ color: "var(--text-2)", border: "1px solid var(--border-hi)" }}>
-                {deleting ? "…" : "Delete"}
-              </button>
+              {confirmDelete ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs" style={{ color: "var(--text-3)" }}>Delete?</span>
+                  <button type="button" onClick={handleDelete} disabled={deleting}
+                    className="text-xs rounded px-2 py-1 transition-colors disabled:opacity-40"
+                    style={{ background: "var(--red)", color: "#fff" }}>
+                    {deleting ? "…" : "Yes"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmDelete(false)}
+                    className="text-xs rounded px-2 py-1 transition-colors"
+                    style={{ color: "var(--text-2)", border: "1px solid var(--border-hi)" }}>
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(true)} disabled={deleting}
+                  className="text-xs rounded px-2 py-1.5 transition-colors disabled:opacity-40"
+                  style={{ color: "var(--text-2)", border: "1px solid var(--border-hi)" }}>
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -214,6 +229,18 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
 
       {/* ── ZONE 2: Job Title ── */}
       <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-data text-xs font-medium" style={{ color: "var(--text-3)" }}>#{job.id}</span>
+          {job.provider && (
+            <span className="font-data text-xs px-1.5 py-px rounded"
+              style={{
+                background: PROVIDER_COLORS[job.provider]?.bg ?? "var(--surface-hi)",
+                color: PROVIDER_COLORS[job.provider]?.color ?? "var(--text-3)",
+              }}>
+              {job.provider}
+            </span>
+          )}
+        </div>
         <h1 className="font-bold leading-tight mb-1" style={{ color: "var(--text-1)", fontSize: 20 }}>
           {job.title ?? "(no title)"}
         </h1>
@@ -238,9 +265,6 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
           )}
           <span className="font-data text-xs" style={{ color: "var(--text-3)" }}>
             Seen {job.first_seen?.slice(0, 10)}
-          </span>
-          <span className="font-data text-xs" style={{ color: "var(--text-3)" }}>
-            {job.provider}
           </span>
           <a href={job.url} target="_blank" rel="noopener noreferrer"
             className="text-xs font-medium transition-colors"
