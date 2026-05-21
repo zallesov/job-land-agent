@@ -1,0 +1,11 @@
+{
+  "id": 43,
+  "company": "Ada Health",
+  "title": "Senior AI Engineer",
+  "url": "https://job-boards.greenhouse.io/adahealth/jobs/8488980002",
+  "expected_verdict": "skip",
+  "source": "db_description",
+  "db_status": "not_interested",
+  "db_comment": "Ada Health confirmed hybrid. Role itself is Senior AI Engineer but hybrid Berlin requirement disqualifies for Spain-based remote search.",
+  "job_page_text": "At Ada, we envision a world where everyone gets the healthcare they need. Yet, millions remain undiagnosed and untreated due to the complexity of identifying rare and underrecognized conditions, even when effective treatments exist We\u2019re changing that. Powered by leading AI and built by a team of physicians and clinical scientists, Ada helps people get answers faster, identifying those at risk and guiding them to the right care. Every successful journey makes us smarter and able to help more people. If you\u2019re passionate about transforming healthcare and ensuring no one goes undiagnosed, join us and be part of what\u2019s next. As our Senior AI Engineer, you will play a key role in advancing the development, validation, and supporting tooling of our patented hybrid AI architecture. Our core technology combines Probabilistic Graphical Models (PGMs) with Generative AI to deliver explainable, transparent, and clinically robust medical reasoning. In this role, you will help shape how these components evolve and scale, ensuring they meet high standards for performance, reliability, and regulatory readiness. Reporting to our Director of AI, you will operate at the intersection of medical intelligence and software engineering\u2014translating complex requirements into sophisticated technical solutions. You\u2019ll collaborate closely with AI researchers, engineers, and medical experts, contributing to both the strategic direction of the platform and the hands-on implementation of production-grade systems. System Evolution: Refine and scale our patented hybrid engine, focusing on the interface between LLM-based reasoning and probabilistic logic. Engineering Excellence: Write and deploy high-availability production code in Java and Python, ensuring adherence to security and scalability standard"
+}

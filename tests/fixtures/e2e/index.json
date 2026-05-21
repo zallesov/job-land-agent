@@ -1,0 +1,63 @@
+[
+  {
+    "id": 1173,
+    "file": "tests/fixtures/e2e/job_1173_zencoder.json",
+    "expected_verdict": "pass",
+    "use_for": [
+      "enrich",
+      "sanity"
+    ]
+  },
+  {
+    "id": 1148,
+    "file": "tests/fixtures/e2e/job_1148_submer.json",
+    "expected_verdict": "pass",
+    "use_for": [
+      "enrich",
+      "sanity"
+    ]
+  },
+  {
+    "id": 1167,
+    "file": "tests/fixtures/e2e/job_1167_wikimedia_found.json",
+    "expected_verdict": "uncertain",
+    "use_for": [
+      "enrich",
+      "sanity"
+    ]
+  },
+  {
+    "id": 1154,
+    "file": "tests/fixtures/e2e/job_1154_topsort.json",
+    "expected_verdict": "pass",
+    "use_for": [
+      "enrich",
+      "sanity"
+    ]
+  },
+  {
+    "id": 1151,
+    "file": "tests/fixtures/e2e/job_1151_submer.json",
+    "expected_verdict": "pass",
+    "use_for": [
+      "enrich",
+      "sanity"
+    ]
+  },
+  {
+    "id": 43,
+    "file": "tests/fixtures/e2e/job_43_ada_health.json",
+    "expected_verdict": "skip",
+    "use_for": [
+      "sanity"
+    ]
+  },
+  {
+    "id": 34,
+    "file": "tests/fixtures/e2e/job_34_cresta.json",
+    "expected_verdict": "skip",
+    "use_for": [
+      "sanity"
+    ]
+  }
+]
