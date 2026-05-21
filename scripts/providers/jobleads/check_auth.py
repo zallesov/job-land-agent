@@ -1,4 +1,7 @@
 from __future__ import annotations
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 import re
 from playwright.sync_api import sync_playwright
 from scripts.providers._shared.auth_check import wait_for_auth
@@ -28,5 +31,4 @@ def check_auth(cdp_url: str) -> None:
 
 
 if __name__ == "__main__":
-    import sys
     check_auth(sys.argv[1] if len(sys.argv) > 1 else "http://localhost:9222")
