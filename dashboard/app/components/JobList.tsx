@@ -16,6 +16,9 @@ export const STATUS_COLORS: Record<string, string> = {
   interviewing:   "bg-teal-900/60 text-teal-200",
   rejected:       "bg-red-900/40 text-red-400",
   archived:       "bg-white/5 text-[var(--text-3)]",
+  listed:         "bg-slate-900/60 text-slate-400",
+  enrich_failed:  "bg-red-900/20 text-red-600",
+  sanity_failed:  "bg-orange-900/20 text-orange-600",
 };
 
 const INTERVIEW_PILL: Record<string, { bg: string; color: string }> = {
@@ -40,7 +43,8 @@ const VERDICT_LABEL: Record<string, string> = {
 
 const STATUS_PRIORITY: Record<string, number> = {
   interviewing: 0, applied: 1, draft_ready: 2, interesting: 3,
-  researched: 4, new: 5, researching: 6, not_interested: 7, rejected: 8, archived: 9,
+  researched: 4, new: 5, listed: 5.5, researching: 6, not_interested: 7, rejected: 8, archived: 9,
+  enrich_failed: 10, sanity_failed: 11,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

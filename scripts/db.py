@@ -162,12 +162,19 @@ def create_db(db_path: str) -> None:
     for migration_sql in [
         "ALTER TABLE jobs ADD COLUMN deleted_at TEXT",
         "ALTER TABLE jobs ADD COLUMN salary_range TEXT",
+        "ALTER TABLE jobs ADD COLUMN dedup_key TEXT",
     ]:
         try:
             cur.execute(migration_sql)
             con.commit()
         except Exception:
             pass
+
+    try:
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup_key ON jobs(dedup_key)")
+        con.commit()
+    except Exception:
+        pass
 
     con.commit()
     con.close()
@@ -204,6 +211,25 @@ def upsert_company(con: sqlite3.Connection, display_name: str, domain: str | Non
 
 def get_job_by_url(con: sqlite3.Connection, url: str) -> sqlite3.Row | None:
     return con.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+
+
+def get_job(con: sqlite3.Connection, job_id: int) -> dict | None:
+    row = con.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def update_job_status(con: sqlite3.Connection, job_id: int, status: str,
+                      comment: str | None = None) -> None:
+    if comment is not None:
+        con.execute(
+            "UPDATE jobs SET status = ?, comment = ?, updated_at = datetime('now') WHERE id = ?",
+            (status, comment, job_id),
+        )
+    else:
+        con.execute(
+            "UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?",
+            (status, job_id),
+        )
 
 
 def insert_job(con: sqlite3.Connection, **fields) -> int:

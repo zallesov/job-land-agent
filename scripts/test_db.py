@@ -60,3 +60,69 @@ def test_indexes_exist():
         assert expected_idx in indexes, f"Missing index: {expected_idx}"
     con.close()
     os.unlink(path)
+
+
+# --- Task 1: get_job / update_job_status / dedup_key ---
+
+def test_get_job_returns_dict():
+    from db import get_job
+    path = make_db()
+    con = get_connection(path)
+    jid = con.execute(
+        "INSERT INTO jobs (url, provider, status) VALUES ('http://x.com','test','new')"
+    ).lastrowid
+    con.commit()
+    job = get_job(con, jid)
+    assert job["id"] == jid
+    assert job["status"] == "new"
+    con.close()
+    os.unlink(path)
+
+
+def test_get_job_missing_returns_none():
+    from db import get_job
+    path = make_db()
+    con = get_connection(path)
+    assert get_job(con, 99999) is None
+    con.close()
+    os.unlink(path)
+
+
+def test_update_job_status():
+    from db import get_job, update_job_status
+    path = make_db()
+    con = get_connection(path)
+    jid = con.execute(
+        "INSERT INTO jobs (url, provider, status) VALUES ('http://x.com','test','listed')"
+    ).lastrowid
+    con.commit()
+    update_job_status(con, jid, "enrich_failed", comment="timeout")
+    con.commit()
+    job = get_job(con, jid)
+    assert job["status"] == "enrich_failed"
+    assert job["comment"] == "timeout"
+    con.close()
+    os.unlink(path)
+
+
+def test_dedup_key_column_exists():
+    path = make_db()
+    con = get_connection(path)
+    con.execute("INSERT INTO jobs (url, provider, dedup_key) VALUES ('http://y.com','test','Co::Title')")
+    con.commit()
+    row = con.execute("SELECT dedup_key FROM jobs WHERE url='http://y.com'").fetchone()
+    assert row["dedup_key"] == "Co::Title"
+    con.close()
+    os.unlink(path)
+
+
+def test_dedup_key_unique():
+    path = make_db()
+    con = get_connection(path)
+    con.execute("INSERT INTO jobs (url, provider, dedup_key) VALUES ('http://a.com','t','Co::T')")
+    con.commit()
+    with pytest.raises(Exception):
+        con.execute("INSERT INTO jobs (url, provider, dedup_key) VALUES ('http://b.com','t','Co::T')")
+        con.commit()
+    con.close()
+    os.unlink(path)
