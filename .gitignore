@@ -68,6 +68,42 @@ venv/
 # Codex backups
 .codex.bak/
 
+# Claude Code local settings (may contain API keys)
+.claude/settings.local.json
+
+# Personal profile / auth notes
+profile.json
+jobleads-search-authenticated.md
+
+# One-off scripts in scripts/
+scripts/research_job_38.py
+
 # macOS
 .DS_Store
 .AppleDouble
+
+# User config (personal data — copy from user.yaml.example)
+config/user.yaml
+config/cv.md
+config/resume.pdf
+
+# Hermes profile personal data
+hermes-profile/auth.json
+hermes-profile/.env
+hermes-profile/.hermes_history
+hermes-profile/cache/
+hermes-profile/audio_cache/
+hermes-profile/cron/output/
+hermes-profile/home/
+hermes-profile/.skills_prompt_snapshot.json
+hermes-profile/.update_check
+
+# Legacy pipeline config (superseded by config/user.yaml)
+config/pipeline_config.json
+
+# Archived skills (kept for reference, not committed)
+tmp/skills/
+
+# Personal files
+ALEKSANDR_*.md
+jobs_all.*
