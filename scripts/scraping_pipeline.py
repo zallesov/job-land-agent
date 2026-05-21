@@ -25,7 +25,6 @@ from scripts.pipeline.ingest import ingest_jobs
 from scripts.pipeline.enrich_job import enrich_job
 from scripts.pipeline.sanity_check_job import sanity_check_job
 from scripts.pipeline.notify import send_daily_digest
-from scripts.db import get_connection
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
@@ -41,10 +40,12 @@ def run(
     _check_auth=None,
     _scrape_jobs=None,
 ) -> None:
-    auth_mod = importlib.import_module(f"scripts.providers.{provider}.check_auth")
-    scrape_mod = importlib.import_module(f"scripts.providers.{provider}.scrape_jobs")
-    check_auth_fn = _check_auth or auth_mod.check_auth
-    scrape_jobs_fn = _scrape_jobs or scrape_mod.scrape_jobs
+    if _check_auth is None:
+        _check_auth = importlib.import_module(f"scripts.providers.{provider}.check_auth").check_auth
+    if _scrape_jobs is None:
+        _scrape_jobs = importlib.import_module(f"scripts.providers.{provider}.scrape_jobs").scrape_jobs
+    check_auth_fn = _check_auth
+    scrape_jobs_fn = _scrape_jobs
 
     check_auth_fn(cdp_url)
 
@@ -64,18 +65,13 @@ def run(
     print(f"[pipeline] ingested {len(job_ids)} jobs", flush=True)
 
     enrich_failures: list[tuple[int, str]] = []
+    enriched_ids: list[int] = []
     for job_id in job_ids:
         result = enrich_job(job_id, db_path=db_path)
-        if not result.success:
+        if result.success:
+            enriched_ids.append(job_id)
+        else:
             enrich_failures.append((job_id, result.error or "unknown"))
-
-    con = get_connection(db_path)
-    enriched_ids = []
-    for jid in job_ids:
-        row = con.execute("SELECT status FROM jobs WHERE id = ?", (jid,)).fetchone()
-        if row and row["status"] == "new":
-            enriched_ids.append(jid)
-    con.close()
 
     sanity_failures: list[tuple[int, str]] = []
     for job_id in enriched_ids:

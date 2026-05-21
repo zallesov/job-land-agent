@@ -11,15 +11,10 @@ def _job(company="Acme", title="SWE", url="http://x.com"):
     )
 
 
-def test_happy_path(db_path, con):
+def test_happy_path(db_path):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
-
-    # Insert the job that ingest would produce so the DB status check works
-    jid = con.execute(
-        "INSERT INTO jobs (url, provider, status) VALUES ('http://x.com','greenhouse','new')"
-    ).lastrowid
-    con.commit()
+    jid = 1
 
     with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]) as mock_dedup, \
          patch("scripts.scraping_pipeline.ingest_jobs", return_value=[jid]) as mock_ingest, \
@@ -44,6 +39,7 @@ def test_happy_path(db_path, con):
 
     mock_check_auth.assert_called_once_with("http://localhost:9222")
     mock_scrape.assert_called_once_with("berlin", "http://localhost:9222")
+    mock_dedup.assert_called_once()
     mock_ingest.assert_called_once()
     mock_enrich.assert_called_once_with(jid, db_path=db_path)
     mock_sanity.assert_called_once_with(jid, db_path=db_path)
@@ -66,15 +62,10 @@ def test_auth_error_stops_pipeline(db_path):
     mock_scrape.assert_not_called()
 
 
-def test_enrich_failure_skips_sanity_for_that_job(db_path, con):
+def test_enrich_failure_skips_sanity_for_that_job(db_path):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
-
-    # Pre-insert a job with status='enrich_failed'
-    jid = con.execute(
-        "INSERT INTO jobs (url, provider, status) VALUES ('http://x.com','greenhouse','enrich_failed')"
-    ).lastrowid
-    con.commit()
+    jid = 2
 
     with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]), \
          patch("scripts.scraping_pipeline.ingest_jobs", return_value=[jid]), \
