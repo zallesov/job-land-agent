@@ -36,6 +36,7 @@ import json
 import re
 import sys
 import time
+import urllib.parse
 from datetime import date
 from pathlib import Path
 
@@ -98,56 +99,43 @@ def wait_for_search_results(page, timeout: int = 30000) -> bool:
         return False
 
 
-def apply_filters(page, remote_only: bool = True, full_time: bool = True) -> bool:
-    """Apply Remote Only and Full Time filters via simple UI toggles.
-    
-    STRATEGY: Use the toggle buttons visible in the search bar (NOT the Filters
-    modal — opening it resets the saved search SPA state). WellFound shows:
-    - "Full Time" as a toggle button in the search bar
-    - Remote/On-site as a button next to location
-    
-    For salary $100k+: use URL param ?salary_min=100000 which WellFound respects.
+def set_work_location_filter(page, work_style: str) -> None:
+    """Set Work Location dropdown based on work_style: 'remote', 'hybrid', or 'onsite'."""
+    label_map = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site"}
+    target = label_map.get(work_style, "Remote")
+    try:
+        btn = page.locator(
+            'button:has-text("Remote"), button:has-text("On-site"), '
+            'button:has-text("Onsite"), button:has-text("Hybrid"), '
+            'button:has-text("Work Location")'
+        ).first
+        if btn.count() == 0:
+            print("  [WARN] Work location dropdown not found", flush=True)
+            return
+        btn.click()
+        page.wait_for_timeout(800)
+        opt = page.locator(f'[role="option"]:has-text("{target}")').first
+        if opt.count() > 0:
+            opt.click()
+            page.wait_for_timeout(1500)
+            print(f"  ✓ Work location: {target}", flush=True)
+        else:
+            print(f"  [WARN] Option '{target}' not found in dropdown", flush=True)
+    except Exception as e:
+        print(f"  [WARN] Work location filter: {e}", flush=True)
+
+
+def apply_filters(page, work_style: str = "remote", full_time: bool = True) -> bool:
+    """Apply work location type and full-time filters.
+
+    work_style: 'remote' | 'hybrid' | 'onsite' — drives the Work Location dropdown.
+    Salary min $100k applied via URL param.
     """
     try:
         print("  Applying filters...", flush=True)
-        
-        # ── Remote Only ──
-        if remote_only:
-            remote_applied = False
-            try:
-                # Look for the remote toggle button near the search bar
-                remote_btns = page.locator(
-                    'button:has-text("Remote"), '
-                    'button:has-text("On-site"), '
-                    'button:has-text("Onsite")'
-                )
-                if remote_btns.count() > 0:
-                    first_btn = remote_btns.first
-                    if first_btn.is_enabled():
-                        first_btn.click()
-                        page.wait_for_timeout(800)
-                        remote_opt = page.locator(
-                            '[role="option"]:has-text("Remote"), '
-                            'text="Remote only", '
-                            'label:has-text("Remote")'
-                        ).first
-                        if remote_opt.count() > 0:
-                            remote_opt.click()
-                            page.wait_for_timeout(1500)
-                            print("  ✓ Remote Only selected via UI", flush=True)
-                            remote_applied = True
-            except Exception as e:
-                print(f"  [INFO] Remote UI toggle failed: {e}", flush=True)
-            
-            if not remote_applied:
-                print("  [INFO] Remote toggle disabled/missing, using URL param", flush=True)
-                current_url = page.url.split("?")[0]
-                page.goto(current_url + "?remote=true", 
-                          wait_until="domcontentloaded", timeout=15000)
-                page.wait_for_timeout(3000)
-                print("  ✓ Remote Only via URL", flush=True)
-        
-        # ── Full Time toggle ──
+
+        set_work_location_filter(page, work_style)
+
         if full_time:
             ft_btn = page.locator('button:has-text("Full Time")').first
             if ft_btn.count() > 0:
@@ -158,25 +146,23 @@ def apply_filters(page, remote_only: bool = True, full_time: bool = True) -> boo
                 if "Clear" not in btn_text:
                     ft_btn.click()
                     page.wait_for_timeout(1500)
-                    print("  ✓ Full Time toggled ON", flush=True)
+                    print("  ✓ Full Time ON", flush=True)
                 else:
                     print("  ✓ Full Time already ON", flush=True)
-        
-        # ── Salary minimum via URL ──
-        # WellFound supports ?salary_min=100000 as URL parameter
+
         current_url = page.url
         if "salary_min=" not in current_url:
             sep = "&" if "?" in current_url else "?"
-            page.goto(current_url + f"{sep}salary_min=100000", 
+            page.goto(current_url + f"{sep}salary_min=100000",
                       wait_until="domcontentloaded", timeout=15000)
             page.wait_for_timeout(3000)
-            print("  ✓ Salary min $100k via URL param", flush=True)
-        
-        print("  ✓ All filters applied", flush=True)
+            print("  ✓ Salary min $100k via URL", flush=True)
+
+        print("  ✓ Filters applied", flush=True)
         return True
-        
+
     except Exception as e:
-        print(f"  [WARN] Filter application error: {e}", file=sys.stderr, flush=True)
+        print(f"  [WARN] Filter error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -465,28 +451,37 @@ def main() -> int:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--skip-enrich", action="store_true")
     parser.add_argument("--max-jobs", type=int, default=0)
-    parser.add_argument("--remote-only", action="store_true", default=True)
-    parser.add_argument("--min-salary", type=int, default=100000)
-    parser.add_argument("--full-time", action="store_true", default=True)
     parser.add_argument("--no-filters", action="store_true")
     args = parser.parse_args()
 
     cfg = load_config()
+    search_terms: list[str] = cfg.get("search_terms") or ["Software Engineer"]
+    work_style: str = cfg.get("work_style", {}).get("preferred", "remote")
+    remote = work_style == "remote"
 
-    location_keys = config_location_keys(cfg)
-    if not location_keys:
-        print("No locations in config/user.yaml. Add locations with country_code DE or ES.",
-              file=sys.stderr)
-        return 2
+    # Remote → single "Europe" run. Non-remote → iterate configured cities.
+    if remote:
+        search_locations = [("Europe", "europe")]
+    else:
+        location_keys = config_location_keys(cfg)
+        search_locations = [
+            (LOCATION_PRESETS[k], slugify(k))
+            for k in location_keys if k in LOCATION_PRESETS
+        ]
+        if not search_locations:
+            print("No locations in config/user.yaml. Add locations with country_code DE or ES.",
+                  file=sys.stderr)
+            return 2
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     print(f"CDP: {args.cdp_url}", flush=True)
-    print(f"Locations: {location_keys}", flush=True)
+    print(f"work_style: {work_style}  search_terms: {search_terms}", flush=True)
+    print(f"locations: {[loc for loc, _ in search_locations]}", flush=True)
 
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
-        print("Connecting to existing Chrome via CDP...", flush=True)
+        print("Connecting to Chrome via CDP...", flush=True)
         try:
             browser = pw.chromium.connect_over_cdp(args.cdp_url)
         except Exception as e:
@@ -499,68 +494,79 @@ def main() -> int:
             return 1
         context = contexts[0]
 
-        for location_key in location_keys:
-            if location_key not in LOCATION_PRESETS:
-                print(f"  [SKIP] Unknown preset {location_key!r}", file=sys.stderr, flush=True)
-                continue
-
-            location_query = LOCATION_PRESETS[location_key]
-            location_slug = slugify(location_key)
+        for location_query, location_slug in search_locations:
             output_file = args.output_dir / f"wellfound_jobs_live_{args.date}_{location_slug}.json"
-            print(f"\n=== {location_key.upper()} → {location_query} ===", flush=True)
+            print(f"\n=== {location_query} ({work_style}) ===", flush=True)
             print(f"Output: {output_file}", flush=True)
 
+            seen_urls: set[str] = set()
+            all_rows: list[dict] = []
             page = context.new_page()
 
-            # Phase 1: Load search results
-            print("Navigating to /jobs...", flush=True)
-            page.goto(f"{WELLFOUND_BASE}/jobs", wait_until="domcontentloaded", timeout=45000)
-            page.wait_for_timeout(4000)
+            for role in search_terms:
+                print(f"\n  Searching: {role!r}", flush=True)
 
-            if not wait_for_search_results(page, timeout=15000):
-                page.wait_for_timeout(5000)
+                # Navigate with role pre-filled + salary param
+                url_params: dict[str, str] = {"role": role, "salary_min": "100000"}
+                if remote:
+                    url_params["remote"] = "true"
+                nav_url = f"{WELLFOUND_BASE}/jobs?" + urllib.parse.urlencode(url_params)
+                page.goto(nav_url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(3000)
+
                 if not wait_for_search_results(page, timeout=15000):
-                    if any(x in page.url.lower() for x in ("sign_in", "login", "auth")):
-                        print(f"\n⚠️  AUTH REQUIRED: WellFound login needed.", flush=True)
-                        print("Exiting with code 10 to signal pipeline pause.", flush=True)
-                        browser.close()
-                        raise SystemExit(10)
-                    print("ERROR: No search results loaded.", file=sys.stderr)
-                    page.close()
-                    continue
+                    page.wait_for_timeout(5000)
+                    if not wait_for_search_results(page, timeout=10000):
+                        if any(x in page.url.lower() for x in ("sign_in", "login", "auth")):
+                            print("\n⚠️  AUTH REQUIRED: WellFound login needed.", flush=True)
+                            print("Exiting with code 10 to signal pipeline pause.", flush=True)
+                            browser.close()
+                            raise SystemExit(10)
+                        print("  [WARN] No results loaded, skipping role", flush=True)
+                        continue
 
-            # Phase 2: Apply filters
-            if not args.no_filters:
-                apply_filters(page, remote_only=args.remote_only, full_time=args.full_time)
+                # Apply work location type + full-time filters
+                if not args.no_filters:
+                    apply_filters(page, work_style=work_style)
+                    page.wait_for_timeout(2000)
+
+                # Set location in UI:
+                #   remote → "Europe" (broad region, no city picker)
+                #   non-remote → specific city from config
+                print(f"  Setting location: {location_query}", flush=True)
+                change_location(page, location_query)
                 page.wait_for_timeout(2000)
 
-            # Phase 3: Change location
-            print(f"Setting location to: {location_query}", flush=True)
-            change_location(page, location_query)
-            page.wait_for_timeout(2000)
+                # Scroll to load all
+                scroll_to_load_all(page)
 
-            # Phase 4: Scroll
-            print("Loading all results via scroll...", flush=True)
-            total = scroll_to_load_all(page)
+                # Collect and dedup by URL within this location run
+                rows = collect_wellfound(page, location_query)
+                new_rows = [r for r in rows if r.get("url") and r["url"] not in seen_urls]
+                for r in new_rows:
+                    seen_urls.add(r["url"])
+                all_rows.extend(new_rows)
+                print(f"  +{len(new_rows)} new (total so far: {len(all_rows)})", flush=True)
 
-            # Phase 5: Collect
-            print("Collecting job cards...", flush=True)
-            rows = collect_wellfound(page, location_key.title())
-            print(f"  Found {len(rows)} unique job cards (from {total} links)", flush=True)
+            if args.max_jobs and args.max_jobs < len(all_rows):
+                all_rows = all_rows[:args.max_jobs]
 
-            if args.max_jobs and args.max_jobs < len(rows):
-                rows = rows[:args.max_jobs]
-
-            # Phase 6: Filter before enrichment — is_relevant only needs title
+            # Filter: separate relevant from skip
             relevant_rows = [
-                r for r in rows
+                r for r in all_rows
                 if r.get("url") and r.get("title") and r.get("company")
-                and not re.match(r"^(Posted\b|Viewed\b|View job$|Applications$|Jobs$)", r.get("title", ""), re.I)
+                and not re.match(r"^(Posted\b|Viewed\b|View job$|Applications$|Jobs$)",
+                                 r.get("title", ""), re.I)
                 and is_relevant(r)
             ]
-            skip_rows = [r for r in rows if r.get("title") and r.get("company") and r not in relevant_rows]
-            print(f"  Profile filter: {len(relevant_rows)} relevant, {len(skip_rows)} skipped", flush=True)
+            skip_rows = [
+                r for r in all_rows
+                if r.get("title") and r.get("company") and r not in relevant_rows
+            ]
+            print(f"\n  Profile filter: {len(relevant_rows)} relevant, {len(skip_rows)} skipped",
+                  flush=True)
 
+            # Enrich relevant jobs only
             if not args.skip_enrich and relevant_rows:
                 print(f"Enriching {len(relevant_rows)} relevant jobs...", flush=True)
                 for i, row in enumerate(relevant_rows):
@@ -572,11 +578,12 @@ def main() -> int:
             for row in skip_rows:
                 row["_skip"] = True
 
-            all_rows = relevant_rows + skip_rows
-            output_file.write_text(json.dumps(all_rows, indent=2, ensure_ascii=False) + "\n")
+            output_rows = relevant_rows + skip_rows
+            output_file.write_text(json.dumps(output_rows, indent=2, ensure_ascii=False) + "\n")
             print(json.dumps({
-                "out": str(output_file), "count": len(relevant_rows), "skipped": len(skip_rows),
-                "dropped": 0,
+                "out": str(output_file),
+                "count": len(relevant_rows),
+                "skipped": len(skip_rows),
                 "missing_descriptions": sum(1 for r in relevant_rows if not r.get("description")),
             }, indent=2), flush=True)
 
