@@ -1,12 +1,27 @@
 from __future__ import annotations
+from playwright.sync_api import sync_playwright
 from scripts.providers._shared.auth_check import wait_for_auth
 
 CHECK_URL = "https://my.greenhouse.io/jobs"
 
 
-def is_auth_page(url: str) -> bool:
+class AuthError(Exception):
+    pass
+
+
+def _is_auth_page(url: str) -> bool:
     return "/users/sign_in" in url
 
 
-def check_auth(page, timeout_sec: int = 600) -> bool:
-    return wait_for_auth(page, "greenhouse", CHECK_URL, is_auth_page, timeout_sec=timeout_sec)
+def check_auth(cdp_url: str) -> None:
+    """Raises AuthError if Greenhouse session cannot be established."""
+    with sync_playwright() as pw:
+        browser = pw.chromium.connect_over_cdp(cdp_url)
+        ctx = browser.contexts[0]
+        page = ctx.new_page()
+        try:
+            ok = wait_for_auth(page, "greenhouse", CHECK_URL, _is_auth_page)
+        finally:
+            browser.close()
+    if not ok:
+        raise AuthError("Greenhouse auth timed out")
