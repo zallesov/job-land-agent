@@ -25,3 +25,8 @@ def check_auth(cdp_url: str) -> None:
             page.close()
     if not ok:
         raise AuthError("JobLeads auth timed out")
+
+
+if __name__ == "__main__":
+    import sys
+    check_auth(sys.argv[1] if len(sys.argv) > 1 else "http://localhost:9222")
