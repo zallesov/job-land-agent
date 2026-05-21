@@ -397,6 +397,24 @@ def collect_sprout(page, titles: list[str], location: str, country: str, max_job
                 print(f"    [skip] {summary['company'][:20]} - {summary['title'][:50]} (in DB)", flush=True)
                 continue
 
+            # Skip non-relevant before clicking card (is_relevant only needs title)
+            if not is_relevant({"title": summary["title"]}):
+                all_jobs.append({
+                    "provider": "sprout",
+                    "company": summary["company"],
+                    "title": summary["title"],
+                    "url": f"urn:skip:sprout:{summary['company']}::{summary['title']}",
+                    "applyUrl": "",
+                    "description": "",
+                    "location": summary.get("location", ""),
+                    "country": country,
+                    "postingDate": "",
+                    "salaryRaw": "",
+                    "_skip": True,
+                    "_dup_key": dup_key,
+                })
+                continue
+
             print(f"    [{len(all_jobs)+1}] {summary['company'][:20]} - {summary['title'][:50]}", flush=True)
             original_url = open_card_and_get_url(page, i)
 
@@ -573,25 +591,22 @@ def main() -> int:
 
             db = str(PROJECT_ROOT / "jobs.db")
             jobs = collect_sprout(page, titles, location_str, location_key.title(), args.max_jobs, db_path=db)
-            print(f"Enriching {len(jobs)} jobs...", flush=True)
-            for i, row in enumerate(jobs):
-                print(f"  [{i+1}/{len(jobs)}] {row['url'][:80]}", flush=True)
+
+            relevant_jobs = [j for j in jobs if not j.get("_skip")]
+            skip_jobs = [j for j in jobs if j.get("_skip")]
+            print(f"  Profile filter: {len(relevant_jobs)} relevant, {len(skip_jobs)} skipped", flush=True)
+
+            print(f"Enriching {len(relevant_jobs)} relevant jobs...", flush=True)
+            for i, row in enumerate(relevant_jobs):
+                print(f"  [{i+1}/{len(relevant_jobs)}] {row['url'][:80]}", flush=True)
                 enrich_sprout_job(page, row)
 
             page.close()
 
-            # Filter and save
-            rows_before = len(jobs)
-            final = [
-                j for j in jobs
-                if j.get("url") and j.get("title") and j.get("company")
-                and is_relevant(j)
-            ]
-            print(f"  Profile filter dropped {rows_before - len(final)} non-relevant jobs", flush=True)
-            output_file.write_text(json.dumps(final, indent=2, ensure_ascii=False) + "\n")
+            all_jobs_out = relevant_jobs + skip_jobs
+            output_file.write_text(json.dumps(all_jobs_out, indent=2, ensure_ascii=False) + "\n")
             print(json.dumps({
-                "out": str(output_file), "count": len(final),
-                "dropped": rows_before - len(final),
+                "out": str(output_file), "count": len(relevant_jobs), "skipped": len(skip_jobs),
             }, indent=2), flush=True)
 
         browser.close()

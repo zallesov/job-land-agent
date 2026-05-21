@@ -42,6 +42,7 @@ def scrape_jobs(
     for r in raw_rows:
         if not r.get("title") or not r.get("company"):
             continue
+        relevant = is_relevant({"title": r["title"]})
         j = ShallowJob(
             provider="jobleads",
             title=r["title"],
@@ -52,10 +53,10 @@ def scrape_jobs(
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salaryRaw") or None,
+            status="listed" if relevant else "skip",
         )
-        if is_relevant({"title": j.title}):
-            jobs.append(j)
+        jobs.append(j)
 
     if titles:
-        jobs = [j for j in jobs if any(t.lower() in j.title.lower() for t in titles)]
+        jobs = [j for j in jobs if j.status == "skip" or any(t.lower() in j.title.lower() for t in titles)]
     return jobs

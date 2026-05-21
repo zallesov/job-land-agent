@@ -27,15 +27,17 @@ def test_returns_shallow_jobs(mock_pw, mock_collect):
 
     from scripts.providers.greenhouse.scrape_jobs import scrape_jobs
     jobs = scrape_jobs(BERLIN, "http://localhost:9222")
-    # 3 relevant jobs pass through; Sales Manager DACH is filtered
-    assert len(jobs) == 3
+    # 3 relevant + 1 skip (Sales Manager DACH)
+    assert len([j for j in jobs if j.status == "listed"]) == 3
     assert all(j.provider == "greenhouse" for j in jobs)
     assert all("::" in j.dedup_key for j in jobs)
     titles = {j.title for j in jobs}
     assert "Staff AI Engineer" in titles
     assert "Staff Software Engineer" in titles
     assert "Engineering Manager (Data Team)" in titles
-    assert "Sales Manager DACH" not in titles
+    # Sales Manager DACH returned as skip, not dropped
+    skip_jobs = [j for j in jobs if j.status == "skip"]
+    assert any(j.title == "Sales Manager DACH" for j in skip_jobs)
 
 
 @patch("scripts.providers.greenhouse.scrape_jobs.collect_greenhouse")
@@ -55,7 +57,7 @@ def test_irrelevant_jobs_filtered(mock_pw, mock_collect):
 
     from scripts.providers.greenhouse.scrape_jobs import scrape_jobs
     jobs = scrape_jobs(BERLIN, "http://localhost:9222")
-    assert jobs == []
+    assert len(jobs) == 1 and jobs[0].status == "skip"
 
 
 @patch("scripts.providers.greenhouse.scrape_jobs.collect_greenhouse")

@@ -92,7 +92,7 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   is_scraping: number;
 })[] {
   const db = getDb();
-  const conditions: string[] = ["j.deleted_at IS NULL"];
+  const conditions: string[] = ["j.deleted_at IS NULL", "j.status != 'skip'"];
   const params: unknown[] = [];
 
   if (filters.status) { conditions.push("j.status = ?"); params.push(filters.status); }

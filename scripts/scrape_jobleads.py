@@ -4,11 +4,10 @@ Scrape JobLeads job search results and save normalized JSON.
 
 Usage:
   # Named location preset (personalized feed):
-  python3 scripts/scrape_jobleads.py --location spain
-  python3 scripts/scrape_jobleads.py --location berlin
+  python3 scripts/scrape_jobleads.py
 
   # Named location preset + job titles (keyword search per title):
-  python3 scripts/scrape_jobleads.py --location berlin \
+  python3 scripts/scrape_jobleads.py \
     --titles "Software Engineer" "AI Engineer" "Engineering Manager"
 
   # Custom search URL:
@@ -17,7 +16,6 @@ Usage:
     --country Spain --location-label "Spain"
 
 Options:
-  --location <name>       Named preset: berlin | spain
   --titles <str...>       Job titles (builds one search per title; without titles uses personalised feed)
   --search-url <url>      Raw search URL (can repeat; overrides --location + --titles)
   --country <str>         Country label for output JSON (used with --search-url)
@@ -37,6 +35,8 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.job_filter import is_relevant
 
@@ -67,6 +67,35 @@ LOCATION_PRESETS: dict[str, dict] = {
     },
 }
 
+DEFAULT_PROFILE = Path.home() / ".interviews-browser-profile"
+PROJECT_ROOT = Path(__file__).parent.parent
+
+COUNTRY_CODE_TO_PRESET: dict[str, str] = {
+    "DE": "berlin",
+    "ES": "spain",
+}
+
+
+def load_config() -> dict:
+    user_yaml = PROJECT_ROOT / "config" / "user.yaml"
+    if not user_yaml.exists():
+        return {}
+    try:
+        import yaml  # noqa: PLC0415
+        return yaml.safe_load(user_yaml.read_text()) or {}
+    except Exception as e:
+        print(f"[WARN] Could not load config/user.yaml: {e}", file=sys.stderr, flush=True)
+        return {}
+
+
+def config_location_keys(cfg: dict) -> list[str]:
+    keys: list[str] = []
+    for loc in cfg.get("locations", []):
+        key = COUNTRY_CODE_TO_PRESET.get(loc.get("country_code", ""))
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
 
 def build_feed_url(preset: dict) -> str:
     return f"{JOBLEADS_BASE}?view=for-you&{preset['url_params']}"
@@ -75,9 +104,6 @@ def build_feed_url(preset: dict) -> str:
 def build_title_url(title: str, preset: dict) -> str:
     return f"{JOBLEADS_BASE}?q={quote_plus(title)}&{preset['url_params']}"
 
-DEFAULT_PROFILE = Path.home() / ".interviews-browser-profile"
-PROJECT_ROOT = Path(__file__).parent.parent
-
 
 def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
@@ -85,6 +111,15 @@ def slugify(s: str) -> str:
 
 def is_auth_page(url: str) -> bool:
     return bool(re.search(r"/external-home|accounts\.google\.com|modal=login|sign.in", url))
+
+
+def is_unauthenticated(page) -> bool:
+    """Check page content for signals that the session is not logged in."""
+    try:
+        body = (page.content() or "").lower()
+        return "solo para miembros registrados" in body
+    except Exception:
+        return False
 
 
 def posting_date_from_relative(relative: str, today: str) -> str:
@@ -121,6 +156,16 @@ def collect_jobleads(page, search: dict) -> list[dict]:
 
     if is_auth_page(page.url):
         print(f"\n⚠️  AUTH REQUIRED: JobLeads login needed for {search['label']}.",
+              flush=True)
+        print("Please log in to JobLeads in the Chrome browser window, then re-run.",
+              flush=True)
+        print("Exiting with code 10 to signal pipeline pause.", flush=True)
+        raise SystemExit(10)
+
+    if is_unauthenticated(page):
+        print(f"\n⚠️  AUTH REQUIRED: JobLeads session not authenticated (anonymous mode detected) for {search['label']}.",
+              flush=True)
+        print("Company names hidden as 'Solo para miembros registrados' — login needed.",
               flush=True)
         print("Please log in to JobLeads in the Chrome browser window, then re-run.",
               flush=True)
@@ -236,116 +281,124 @@ def enrich_jobleads_job(page, row: dict, today: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--location", help="Named preset: berlin | spain")
-    parser.add_argument("--titles", nargs="+", help="Job titles to search (one search per title)")
+    parser.add_argument("--titles", nargs="+", help="Override: job titles to search")
     parser.add_argument("--search-url", dest="search_urls", action="append",
-                        metavar="URL", help="Raw search URL (can repeat)")
+                        metavar="URL", help="Raw search URL (can repeat; overrides all other options)")
     parser.add_argument("--country", help="Country label (with --search-url)")
     parser.add_argument("--location-label", dest="location_label",
                         help="Location label for filename (with --search-url)")
     parser.add_argument("--output-dir", type=Path,
                         default=PROJECT_ROOT / "outputs" / "jobleads" / "runs")
     parser.add_argument("--browser-profile", type=Path, default=DEFAULT_PROFILE,
-                        help="[DEPRECATED] CDP connection uses existing Chrome profile")
-    parser.add_argument("--cdp-url", default="http://localhost:9222",
-                        help="CDP endpoint (default: http://localhost:9222)")
-    parser.add_argument("--headless", action="store_true",
-                        help="[DEPRECATED] CDP uses existing Chrome — ignored")
+                        help="[DEPRECATED] ignored — CDP uses existing Chrome")
+    parser.add_argument("--cdp-url", default="http://localhost:9222")
+    parser.add_argument("--headless", action="store_true", help="[DEPRECATED] ignored")
     parser.add_argument("--date", default=date.today().isoformat())
     args = parser.parse_args()
 
-    # Build search list
-    searches: list[dict] = []
+    cfg = load_config()
+    titles: list[str] = args.titles or cfg.get("search_terms", [])
 
-    if args.search_urls:
-        if not args.country or not args.location_label:
-            print("--country and --location-label required with --search-url", file=sys.stderr)
-            return 2
-        for url in args.search_urls:
-            searches.append({
-                "label": f"{args.country} - {args.location_label}",
-                "country": args.country,
-                "url": url,
-            })
-    elif args.location:
-        preset_key = args.location.lower()
-        if preset_key not in LOCATION_PRESETS:
-            print(f"Unknown location preset: {args.location!r}. Known: {list(LOCATION_PRESETS)}", file=sys.stderr)
-            return 2
-        preset = LOCATION_PRESETS[preset_key]
-        if args.titles:
-            for title in args.titles:
-                searches.append({
-                    "label": f"{title} - {args.location.title()} Remote",
-                    "country": preset["country"],
-                    "url": build_title_url(title, preset),
-                })
-        else:
-            searches.append({
-                "label": f"{args.location.title()} Remote",
-                "country": preset["country"],
-                "url": build_feed_url(preset),
-            })
-    else:
-        print("Provide --location <preset> or --search-url <url>", file=sys.stderr)
-        return 2
-
-    location_slug = slugify(args.location_label if args.search_urls else args.location)
-    output_file = args.output_dir / f"jobleads_jobs_live_{args.date}_{location_slug}.json"
     args.output_dir.mkdir(parents=True, exist_ok=True)
-
     print(f"CDP: {args.cdp_url}", flush=True)
-    print(f"Searches: {[s['label'] for s in searches]}", flush=True)
-    print(f"Output: {output_file}", flush=True)
 
     from playwright.sync_api import sync_playwright  # noqa: PLC0415
 
     with sync_playwright() as pw:
-        # Connect to existing Chrome via CDP — inherits profile, auth, cookies
         browser = pw.chromium.connect_over_cdp(args.cdp_url)
         context = browser.contexts[0]
         page = context.new_page()
 
-        rows_by_url: dict[str, dict] = {}
-        for search in searches:
-            print(f"  Scraping: {search['label']}", flush=True)
-            try:
-                cards = collect_jobleads(page, search)
-                print(f"    Found {len(cards)} cards", flush=True)
-                for card in cards:
-                    rows_by_url.setdefault(card["url"], card)
-            except Exception as e:
-                print(f"    ERROR: {e}", file=sys.stderr, flush=True)
+        # ── Manual URL mode ──────────────────────────────────────────────────
+        if args.search_urls:
+            if not args.country or not args.location_label:
+                print("--country and --location-label required with --search-url", file=sys.stderr)
                 browser.close()
-                return 1
+                return 2
+            searches = [
+                {"label": f"{args.country} - {args.location_label}",
+                 "country": args.country, "url": url}
+                for url in args.search_urls
+            ]
+            location_slug = slugify(args.location_label)
+            output_file = args.output_dir / f"jobleads_jobs_live_{args.date}_{location_slug}.json"
+            _run_location(page, searches, output_file, args.date)
+            browser.close()
+            return 0
 
-        rows = list(rows_by_url.values())
-        print(f"Enriching {len(rows)} unique jobs...", flush=True)
-        for i, row in enumerate(rows):
-            print(f"  [{i+1}/{len(rows)}] {row['url'][:80]}", flush=True)
-            enrich_jobleads_job(page, row, args.date)
+        # ── Config / preset mode ─────────────────────────────────────────────
+        location_keys = config_location_keys(cfg)
+        if not location_keys:
+            print("No locations in config/user.yaml. Add locations with country_code DE or ES.",
+                  file=sys.stderr)
+            browser.close()
+            return 2
+
+        for location_key in location_keys:
+            if location_key not in LOCATION_PRESETS:
+                print(f"  [SKIP] Unknown preset {location_key!r}", file=sys.stderr, flush=True)
+                continue
+            preset = LOCATION_PRESETS[location_key]
+            location_slug = slugify(location_key)
+            output_file = args.output_dir / f"jobleads_jobs_live_{args.date}_{location_slug}.json"
+
+            if titles:
+                searches = [
+                    {"label": f"{t} - {location_key.title()} Remote",
+                     "country": preset["country"], "url": build_title_url(t, preset)}
+                    for t in titles
+                ]
+            else:
+                searches = [
+                    {"label": f"{location_key.title()} Remote",
+                     "country": preset["country"], "url": build_feed_url(preset)}
+                ]
+
+            print(f"\n=== {location_key.upper()} — {len(searches)} search(es) ===", flush=True)
+            _run_location(page, searches, output_file, args.date)
 
         browser.close()
-
-    # Filter low-quality rows + sanity check
-    rows_before_filter = len(rows)
-    final_rows = [
-        r for r in rows
-        if r.get("url") and r.get("title") and r.get("company")
-        and is_relevant(r)
-    ]
-    filter_dropped = rows_before_filter - len(final_rows)
-    print(f"  Profile filter dropped {filter_dropped} non-relevant jobs", flush=True)
-
-    output_file.write_text(json.dumps(final_rows, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({
-        "out": str(output_file),
-        "count": len(final_rows),
-        "countries": sorted({r.get("country", "") for r in final_rows}),
-        "missing_descriptions": sum(1 for r in final_rows if not r.get("description")),
-        "missing_posting_dates": sum(1 for r in final_rows if not r.get("postingDate")),
-    }, indent=2))
     return 0
+
+
+def _run_location(page, searches: list[dict], output_file: Path, today: str) -> None:
+    """Run all searches for one location, enrich, filter, and write file."""
+    import re  # noqa: PLC0415
+    rows_by_url: dict[str, dict] = {}
+    for search in searches:
+        print(f"  Scraping: {search['label']}", flush=True)
+        try:
+            cards = collect_jobleads(page, search)
+            print(f"    Found {len(cards)} cards", flush=True)
+            for card in cards:
+                rows_by_url.setdefault(card["url"], card)
+        except SystemExit:
+            raise
+        except Exception as e:
+            print(f"    ERROR: {e}", file=sys.stderr, flush=True)
+
+    rows = list(rows_by_url.values())
+
+    relevant_rows = [r for r in rows if r.get("url") and r.get("title") and r.get("company") and is_relevant(r)]
+    skip_rows = [r for r in rows if r.get("title") and r.get("company") and r not in relevant_rows]
+    print(f"  Profile filter: {len(relevant_rows)} relevant, {len(skip_rows)} skipped", flush=True)
+
+    print(f"Enriching {len(relevant_rows)} relevant jobs...", flush=True)
+    for i, row in enumerate(relevant_rows):
+        print(f"  [{i+1}/{len(relevant_rows)}] {row['url'][:80]}", flush=True)
+        enrich_jobleads_job(page, row, today)
+
+    for row in skip_rows:
+        row["_skip"] = True
+
+    all_rows = relevant_rows + skip_rows
+    output_file.write_text(json.dumps(all_rows, indent=2, ensure_ascii=False) + "\n")
+    print(json.dumps({
+        "out": str(output_file), "count": len(relevant_rows), "skipped": len(skip_rows),
+        "countries": sorted({r.get("country", "") for r in relevant_rows}),
+        "missing_descriptions": sum(1 for r in relevant_rows if not r.get("description")),
+        "missing_posting_dates": sum(1 for r in relevant_rows if not r.get("postingDate")),
+    }, indent=2), flush=True)
 
 
 if __name__ == "__main__":

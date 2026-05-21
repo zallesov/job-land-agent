@@ -16,11 +16,10 @@ Strategy:
   7. Enrich each job by visiting its detail page
 
 Usage:
-  python3 scripts/scrape_wellfound.py --location berlin
-  python3 scripts/scrape_wellfound.py --location berlin --skip-enrich --max-jobs 10
+  python3 scripts/scrape_wellfound.py
+  python3 scripts/scrape_wellfound.py --skip-enrich --max-jobs 10
 
 Options:
-  --location <name>       Named preset: berlin | spain
   --cdp-url <url>         CDP endpoint (default: http://localhost:9222)
   --date <YYYY-MM-DD>     Override today's date in output filename
   --skip-enrich           Skip detail page enrichment (faster)
@@ -40,6 +39,7 @@ import time
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.job_filter import is_relevant
 
 # ---------------------------------------------------------------------------
@@ -52,6 +52,32 @@ LOCATION_PRESETS: dict[str, str] = {
 
 WELLFOUND_BASE = "https://wellfound.com"
 PROJECT_ROOT = Path(__file__).parent.parent
+
+COUNTRY_CODE_TO_PRESET: dict[str, str] = {
+    "DE": "berlin",
+    "ES": "spain",
+}
+
+
+def load_config() -> dict:
+    user_yaml = PROJECT_ROOT / "config" / "user.yaml"
+    if not user_yaml.exists():
+        return {}
+    try:
+        import yaml  # noqa: PLC0415
+        return yaml.safe_load(user_yaml.read_text()) or {}
+    except Exception as e:
+        print(f"[WARN] Could not load config/user.yaml: {e}", file=sys.stderr, flush=True)
+        return {}
+
+
+def config_location_keys(cfg: dict) -> list[str]:
+    keys: list[str] = []
+    for loc in cfg.get("locations", []):
+        key = COUNTRY_CODE_TO_PRESET.get(loc.get("country_code", ""))
+        if key and key not in keys:
+            keys.append(key)
+    return keys
 
 
 def slugify(s: str) -> str:
@@ -433,142 +459,128 @@ def enrich_wellfound_job(page, row: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--location", help="Named preset: berlin | spain")
-    parser.add_argument("--cdp-url", default="http://localhost:9222",
-                        help="CDP endpoint (default: http://localhost:9222)")
+    parser.add_argument("--cdp-url", default="http://localhost:9222")
     parser.add_argument("--output-dir", type=Path,
                         default=PROJECT_ROOT / "outputs" / "wellfound" / "runs")
     parser.add_argument("--date", default=date.today().isoformat())
-    parser.add_argument("--skip-enrich", action="store_true",
-                        help="Skip detail page enrichment (faster)")
-    parser.add_argument("--max-jobs", type=int, default=0,
-                        help="Limit number of jobs (0 = all)")
-    parser.add_argument("--remote-only", action="store_true", default=True,
-                        help="Filter to remote-only jobs (default: True)")
-    parser.add_argument("--min-salary", type=int, default=100000,
-                        help="Minimum salary in USD (default: 100000)")
-    parser.add_argument("--full-time", action="store_true", default=True,
-                        help="Filter to full-time only (default: True)")
-    parser.add_argument("--no-filters", action="store_true",
-                        help="Skip filter application entirely")
+    parser.add_argument("--skip-enrich", action="store_true")
+    parser.add_argument("--max-jobs", type=int, default=0)
+    parser.add_argument("--remote-only", action="store_true", default=True)
+    parser.add_argument("--min-salary", type=int, default=100000)
+    parser.add_argument("--full-time", action="store_true", default=True)
+    parser.add_argument("--no-filters", action="store_true")
     args = parser.parse_args()
 
-    if not args.location or args.location.lower() not in LOCATION_PRESETS:
-        print(f"Unknown location: {args.location!r}. Known: {list(LOCATION_PRESETS)}",
+    cfg = load_config()
+
+    location_keys = config_location_keys(cfg)
+    if not location_keys:
+        print("No locations in config/user.yaml. Add locations with country_code DE or ES.",
               file=sys.stderr)
         return 2
 
-    preset = LOCATION_PRESETS[args.location.lower()]
-    location_slug = slugify(args.location)
-    output_file = args.output_dir / f"wellfound_jobs_live_{args.date}_{location_slug}.json"
     args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"Location: {args.location} -> {preset}", flush=True)
     print(f"CDP: {args.cdp_url}", flush=True)
-    print(f"Filters: remote={args.remote_only} salary>={args.min_salary} fulltime={args.full_time}", flush=True)
-    print(f"Output: {output_file}", flush=True)
+    print(f"Locations: {location_keys}", flush=True)
 
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
-        # Connect to existing Chrome via CDP — no new browser launch
         print("Connecting to existing Chrome via CDP...", flush=True)
         try:
             browser = pw.chromium.connect_over_cdp(args.cdp_url)
         except Exception as e:
-            print(f"ERROR: Could not connect to Chrome at {args.cdp_url}: {e}",
-                  file=sys.stderr)
-            print("Make sure Chrome is running with --remote-debugging-port=9222",
-                  file=sys.stderr)
+            print(f"ERROR: Could not connect to Chrome at {args.cdp_url}: {e}", file=sys.stderr)
             return 1
 
-        # Use the default context (already authenticated)
         contexts = browser.contexts
         if not contexts:
             print("ERROR: No browser contexts found", file=sys.stderr)
             return 1
-
         context = contexts[0]
-        # Create a fresh page for clean navigation
-        page = context.new_page()
 
-        # ── Phase 1: Load search results ──
-        print("Navigating to /jobs...", flush=True)
-        page.goto(f"{WELLFOUND_BASE}/jobs", wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(4000)
+        for location_key in location_keys:
+            if location_key not in LOCATION_PRESETS:
+                print(f"  [SKIP] Unknown preset {location_key!r}", file=sys.stderr, flush=True)
+                continue
 
-        if not wait_for_search_results(page, timeout=15000):
-            print("  Initial wait failed, retrying...", flush=True)
-            page.wait_for_timeout(5000)
+            location_query = LOCATION_PRESETS[location_key]
+            location_slug = slugify(location_key)
+            output_file = args.output_dir / f"wellfound_jobs_live_{args.date}_{location_slug}.json"
+            print(f"\n=== {location_key.upper()} → {location_query} ===", flush=True)
+            print(f"Output: {output_file}", flush=True)
+
+            page = context.new_page()
+
+            # Phase 1: Load search results
+            print("Navigating to /jobs...", flush=True)
+            page.goto(f"{WELLFOUND_BASE}/jobs", wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(4000)
+
             if not wait_for_search_results(page, timeout=15000):
-                # Check if we hit an auth page
-                if "sign_in" in page.url.lower() or "login" in page.url.lower() or "auth" in page.url.lower():
-                    print(f"\n⚠️  AUTH REQUIRED: WellFound login needed.",
-                          flush=True)
-                    print("Please log in to WellFound in the Chrome browser window, then re-run.",
-                          flush=True)
-                    print("Exiting with code 10 to signal pipeline pause.", flush=True)
-                    raise SystemExit(10)
-                print("ERROR: No search results loaded. Is WellFound logged in?",
-                      file=sys.stderr)
-                browser.close()
-                return 1
+                page.wait_for_timeout(5000)
+                if not wait_for_search_results(page, timeout=15000):
+                    if any(x in page.url.lower() for x in ("sign_in", "login", "auth")):
+                        print(f"\n⚠️  AUTH REQUIRED: WellFound login needed.", flush=True)
+                        print("Exiting with code 10 to signal pipeline pause.", flush=True)
+                        browser.close()
+                        raise SystemExit(10)
+                    print("ERROR: No search results loaded.", file=sys.stderr)
+                    page.close()
+                    continue
 
-        # ── Phase 2: Apply filters ──
-        if not args.no_filters:
-            apply_filters(page, remote_only=args.remote_only, full_time=args.full_time)
+            # Phase 2: Apply filters
+            if not args.no_filters:
+                apply_filters(page, remote_only=args.remote_only, full_time=args.full_time)
+                page.wait_for_timeout(2000)
+
+            # Phase 3: Change location
+            print(f"Setting location to: {location_query}", flush=True)
+            change_location(page, location_query)
             page.wait_for_timeout(2000)
 
-        # ── Phase 3: Change location ──
-        print(f"Setting location to: {preset}", flush=True)
-        change_location(page, preset)
-        page.wait_for_timeout(2000)
+            # Phase 4: Scroll
+            print("Loading all results via scroll...", flush=True)
+            total = scroll_to_load_all(page)
 
-        # ── Phase 4: Scroll to load all ──
-        print("Loading all results via scroll...", flush=True)
-        total = scroll_to_load_all(page)
+            # Phase 5: Collect
+            print("Collecting job cards...", flush=True)
+            rows = collect_wellfound(page, location_key.title())
+            print(f"  Found {len(rows)} unique job cards (from {total} links)", flush=True)
 
-        # ── Phase 5: Collect cards ──
-        print("Collecting job cards...", flush=True)
-        rows = collect_wellfound(page, args.location.title())
-        print(f"  Found {len(rows)} unique job cards (from {total} links)", flush=True)
+            if args.max_jobs and args.max_jobs < len(rows):
+                rows = rows[:args.max_jobs]
 
-        if args.max_jobs and args.max_jobs < len(rows):
-            rows = rows[: args.max_jobs]
-            print(f"  Limited to {len(rows)} jobs", flush=True)
+            # Phase 6: Filter before enrichment — is_relevant only needs title
+            relevant_rows = [
+                r for r in rows
+                if r.get("url") and r.get("title") and r.get("company")
+                and not re.match(r"^(Posted\b|Viewed\b|View job$|Applications$|Jobs$)", r.get("title", ""), re.I)
+                and is_relevant(r)
+            ]
+            skip_rows = [r for r in rows if r.get("title") and r.get("company") and r not in relevant_rows]
+            print(f"  Profile filter: {len(relevant_rows)} relevant, {len(skip_rows)} skipped", flush=True)
 
-        # ── Phase 6: Enrich ──
-        if not args.skip_enrich and rows:
-            print(f"Enriching {len(rows)} jobs from detail pages...", flush=True)
-            for i, row in enumerate(rows):
-                print(f"  [{i+1}/{len(rows)}] {row['title'][:80]}", flush=True)
-                enrich_wellfound_job(page, row)
-        elif args.skip_enrich:
-            print("Skipping enrichment (--skip-enrich)", flush=True)
+            if not args.skip_enrich and relevant_rows:
+                print(f"Enriching {len(relevant_rows)} relevant jobs...", flush=True)
+                for i, row in enumerate(relevant_rows):
+                    print(f"  [{i+1}/{len(relevant_rows)}] {row['title'][:80]}", flush=True)
+                    enrich_wellfound_job(page, row)
+
+            page.close()
+
+            for row in skip_rows:
+                row["_skip"] = True
+
+            all_rows = relevant_rows + skip_rows
+            output_file.write_text(json.dumps(all_rows, indent=2, ensure_ascii=False) + "\n")
+            print(json.dumps({
+                "out": str(output_file), "count": len(relevant_rows), "skipped": len(skip_rows),
+                "dropped": 0,
+                "missing_descriptions": sum(1 for r in relevant_rows if not r.get("description")),
+            }, indent=2), flush=True)
 
         browser.close()
-
-    # ── Phase 7: Filter and save ──
-    rows_before_filter = len(rows)
-    final_rows = [
-        r for r in rows
-        if r.get("url") and r.get("title") and r.get("company")
-        and not re.match(
-            r"^(Posted\b|Viewed\b|View job$|Applications$|Jobs$)",
-            r.get("title", ""), re.I
-        )
-        and is_relevant(r)
-    ]
-    filter_dropped = rows_before_filter - len(final_rows)
-    print(f"  Profile filter dropped {filter_dropped} non-relevant jobs", flush=True)
-
-    output_file.write_text(json.dumps(final_rows, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({
-        "out": str(output_file),
-        "count": len(final_rows),
-        "dropped": len(rows) - len(final_rows),
-        "missing_descriptions": sum(1 for r in final_rows if not r.get("description")),
-    }, indent=2))
     return 0
 
 

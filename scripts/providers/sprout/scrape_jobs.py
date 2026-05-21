@@ -43,6 +43,7 @@ def scrape_jobs(
     for r in raw_rows:
         if not r.get("title") or not r.get("company"):
             continue
+        relevant = is_relevant({"title": r["title"]})
         j = ShallowJob(
             provider="sprout",
             title=r["title"],
@@ -53,7 +54,7 @@ def scrape_jobs(
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salary") or None,
+            status="listed" if relevant else "skip",
         )
-        if is_relevant({"title": j.title}):
-            jobs.append(j)
+        jobs.append(j)
     return jobs

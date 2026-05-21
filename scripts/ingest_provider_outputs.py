@@ -131,14 +131,27 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
 
     for raw in raw_jobs:
         try:
+            is_skip = bool(raw.get("_skip", False))
             n = normalize_job(raw)
             if not n["url"]:
                 result["skipped"] += 1
                 continue
             domain = _extract_domain(raw.get("applyUrl"))
             company_id = upsert_company(con, n["posted_company_name"], domain)
+
+            # For skip jobs: check by dedup_key too (synthetic URLs won't match by URL)
+            dedup_key = f"{n['posted_company_name']}::{n['title']}"
             existing = get_job_by_url(con, n["url"])
+            if existing is None and is_skip:
+                existing = con.execute(
+                    "SELECT * FROM jobs WHERE dedup_key = ?", (dedup_key,)
+                ).fetchone()
+
             if existing is not None and existing["deleted_at"] is not None:
+                result["skipped"] += 1
+                continue
+            if existing is not None and is_skip:
+                # Already in DB — don't overwrite status/comment
                 result["skipped"] += 1
                 continue
             if existing is None:
@@ -157,7 +170,9 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
                     date_posted=n["date_posted"],
                     salary_range=n["salary_range"] or None,
                     source_payload_json=json.dumps(n["source_payload"]),
-                    status="new",
+                    dedup_key=dedup_key,
+                    status="skip" if is_skip else "new",
+                    comment="Auto-filtered by job_filter before research" if is_skip else None,
                 )
                 log_event(con, "job", job_id, "job_inserted", "ingest",
                           json.dumps({"provider": n["provider"], "url": n["url"]}))

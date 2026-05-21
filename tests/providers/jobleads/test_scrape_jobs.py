@@ -51,4 +51,4 @@ def test_irrelevant_jobs_filtered(mock_pw, mock_collect):
 
     from scripts.providers.jobleads.scrape_jobs import scrape_jobs
     jobs = scrape_jobs(BERLIN, "http://localhost:9222")
-    assert jobs == []
+    assert len(jobs) == 1 and jobs[0].status == "skip"

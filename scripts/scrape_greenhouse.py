@@ -469,21 +469,32 @@ def _run_location(page, searches: list[dict], output_file: Path, today: str) -> 
             print(f"    ERROR: {e}", file=sys.stderr, flush=True)
 
     rows = list(rows_by_url.values())
-    print(f"Enriching {len(rows)} unique jobs...", flush=True)
-    for i, row in enumerate(rows):
-        print(f"  [{i+1}/{len(rows)}] {row['url'][:80]}", flush=True)
-        enrich_greenhouse_job(page, row)
 
-    rows_before = len(rows)
-    final_rows = [
+    # Filter before enrichment — is_relevant only needs title, no page visit required
+    relevant_rows = [
         r for r in rows
         if r.get("url") and r.get("title") and r.get("company")
         and not re.match(r"^(Posted\b|Viewed\b|View job$|Applications$|Jobs$|Developers$)",
                          r.get("title", ""), re.I)
         and is_relevant(r)
     ]
-    print(f"  Profile filter dropped {rows_before - len(final_rows)} non-relevant jobs", flush=True)
-    output_file.write_text(json.dumps(final_rows, indent=2, ensure_ascii=False) + "\n")
+    skip_rows = [
+        r for r in rows
+        if r.get("title") and r.get("company")
+        and r not in relevant_rows
+    ]
+    print(f"  Profile filter: {len(relevant_rows)} relevant, {len(skip_rows)} skipped", flush=True)
+
+    print(f"Enriching {len(relevant_rows)} relevant jobs...", flush=True)
+    for i, row in enumerate(relevant_rows):
+        print(f"  [{i+1}/{len(relevant_rows)}] {row['url'][:80]}", flush=True)
+        enrich_greenhouse_job(page, row)
+
+    for row in skip_rows:
+        row["_skip"] = True
+
+    all_rows = relevant_rows + skip_rows
+    output_file.write_text(json.dumps(all_rows, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({
         "out": str(output_file), "count": len(final_rows),
         "dropped": rows_before - len(final_rows),
