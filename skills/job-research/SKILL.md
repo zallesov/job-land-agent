@@ -80,13 +80,15 @@ Use web search tools to research the company and role. Research sources in order
 - Any request to pay money or buy equipment upfront
 - Mismatch between company size and role scope
 
-### E. Role Assessment (for Zall's profile: Principal/Senior IC, ~20 yrs AI/cloud/fullstack, based Spain/Germany)
+### E. Role Assessment
+
+Read the user's profile from `config/user.yaml` (cv_path, work_style, locations) before scoring. The scoring dimensions below apply generically.
 
 - Seniority fit: is it a Principal/Senior IC or high-impact staff role?
 - Tech stack overlap: AI, cloud, full-stack, backend, architecture, platform, engineering leadership
 - IC vs management
 - Salary vs market for role and location (if stated); extract as `salary_range` formatted "90-120K EUR" or "90-120K USD" — use currency matching the job's location/company; write "Not found" if absent
-- Remote eligibility for Spain/Germany, timezone requirements
+- Remote eligibility for user's configured locations (from config/user.yaml), timezone requirements
 - Visa/contract structure: employment vs contractor, country entity
 - AI-native vs AI-skeptical: does the company actually build with AI or just list it?
 
@@ -98,7 +100,7 @@ Use web search tools to research the company and role. Research sources in order
 
 - 25: seniority match for Principal/Senior IC
 - 20: AI/cloud/full-stack/platform architecture overlap
-- 15: remote eligibility from Spain/Germany + timezone fit
+- 15: remote eligibility for user's configured locations + timezone fit (read from config/user.yaml `work_style.preferred`)
 - 15: role type fit (strong IC/technical leadership preferred)
 - 10: compensation signal or likely senior-market comp
 - 10: product/engineering complexity + opportunity for leverage
@@ -152,14 +154,14 @@ Produce a JSON object matching this schema **exactly**. Use only the allowed enu
 }
 ```
 
-Save JSON to `/tmp/research_<job_id>.json`, then run:
+Save JSON to `tmp/research_<job_id>.json` (project tmp folder, git-ignored), then run:
 
 ```bash
-python3 /Users/zall/interviews/scripts/db_write_research.py \
+python3 scripts/db_write_research.py \
   --db <db_path> \
   --job-id <job_id> \
   --command-id <command_id> \
-  < /tmp/research_<job_id>.json
+  < tmp/research_<job_id>.json
 ```
 
 The script sets `jobs.status='researched'`, marks the command `succeeded`, closes any pending scrape command, and sends Telegram notification. **Do not do any of this manually or with SQL.**
@@ -195,7 +197,7 @@ Return: company legitimacy, employee count, funding, Glassdoor, risk news, red f
 
 ### Chrome Pre-Flight: Verify Local Chrome Before Any Browser Tool
 
-**Config** (`~/.hermes/profiles/interviewprep/config.yaml`) specifies:
+**Config** (`hermes-profile/config.yaml`) specifies:
 ```yaml
 browser:
   engine: auto
@@ -210,19 +212,19 @@ browser:
 curl -s http://localhost:9222/json/version || echo "NOT_RUNNING"
 ```
 
-If `NOT_RUNNING`, tell Zall to run `~/start-chrome.sh` first. Do not proceed with `browser_navigate` until Chrome responds.
+If `NOT_RUNNING`, tell the user to run `~/start-chrome.sh` first. Do not proceed with `browser_navigate` until Chrome responds.
 
 ### Browser Architecture: Local Headless Chromium, Not Cloud
 
-The Hermes browser tool (`browser_navigate`/`browser_click`/`browser_snapshot/etc.`) routes through **agent-browser**, which launches a local **headless** Chromium on Zall's machine. There is NO Browserbase, BrowserUse, or cloud provider configured — no `BROWSERBASE_API_KEY`, no `BROWSER_USE_API_KEY`, no `NOUS_USER_TOKEN`. Never claim a cloud browser is being used.
+The Hermes browser tool (`browser_navigate`/`browser_click`/`browser_snapshot/etc.`) routes through **agent-browser**, which launches a local **headless** Chromium on the user's machine. There is NO Browserbase, BrowserUse, or cloud provider configured — no `BROWSERBASE_API_KEY`, no `BROWSER_USE_API_KEY`, no `NOUS_USER_TOKEN`. Never claim a cloud browser is being used.
 
 - agent-browser defaults to **headless** mode → no visible Chrome window
 - `npx agent-browser` runs locally; user agent shows `HeadlessChrome`
 - The `apply-job` skill uses a **separate** Playwright script (`apply_job_filler.py`) with `headless=False` — that's the only code path producing a visible Chrome window
 
-### If Zall Asks Why No Browser Window Appears
+### If the User Asks Why No Browser Window Appears
 
-Explain: agent-browser runs headless locally for research tasks. The visible window only opens during application fills (Playwright headed mode). If Zall wants to see the research browser, options include:
+Explain: agent-browser runs headless locally for research tasks. The visible window only opens during application fills (Playwright headed mode). If the user wants to see the research browser, options include:
 - Run research through a Playwright script instead of agent-browser
 - Configure agent-browser for headed mode (not currently set up)
 - Use browser_vision for screenshots of what the headless browser is seeing
@@ -260,7 +262,7 @@ t.substring(idx, idx + 4000)
 
 ### Bot-Detection Cascade: Research Source Fallbacks
 
-When researching companies, multiple sources block headless browser IPs (213.194.151.53 based in Spain):
+When researching companies, multiple sources block headless browser IPs:
 
 | Source | Typical result | Fallback |
 |--------|---------------|----------|
@@ -295,6 +297,10 @@ This returns structured news items with dates — ideal for risk scanning (layof
 5. Glassdoor (attempt; if blocked, mark `Not found` and continue)
 6. Crunchbase (attempt; if blocked, mark `Not found` and continue)
 7. DuckDuckGo/Bing searches (use sparingly — rate-limited quickly)
+
+### Silent company_research skip when company_id is null
+
+When a job row has `company_id IS NULL` (common for newly scraped jobs that haven't been matched to a company record), `db_write_research.py` skips the `company_research` INSERT entirely (line 46: `if company_id:`). The research data still lands in `job_assessments.raw_assessment_json`, but there is no dedicated company_research row. This is by design — company_research is keyed by company_id, not job_id. If you need the company research persisted standalone, set `company_id` on the job row first.
 
 ## Error Handling
 
