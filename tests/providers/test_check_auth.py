@@ -31,7 +31,7 @@ def _chrome_ready(timeout: int = 15) -> bool:
 
 
 @pytest.fixture(scope="module")
-def cdp_page():
+def cdp_browser():
     if not _chrome_ready(timeout=3):
         print("\nChrome not running — launching via start-chrome.sh...")
         subprocess.Popen(["bash", START_CHROME], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -40,11 +40,16 @@ def cdp_page():
 
     pw = sync_playwright().start()
     browser = pw.chromium.connect_over_cdp(CDP_URL)
-    ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+    yield browser
+    pw.stop()
+
+
+@pytest.fixture
+def cdp_page(cdp_browser):
+    ctx = cdp_browser.contexts[0] if cdp_browser.contexts else cdp_browser.new_context()
     page = ctx.new_page()
     yield page
     page.close()
-    pw.stop()
 
 
 @pytest.mark.e2e
