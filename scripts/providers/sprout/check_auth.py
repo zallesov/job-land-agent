@@ -21,6 +21,6 @@ def check_auth(cdp_url: str) -> None:
         try:
             ok = wait_for_auth(page, "sprout", CHECK_URL, _is_auth_page)
         finally:
-            browser.close()
+            page.close()
     if not ok:
         raise AuthError("Sprout auth timed out")

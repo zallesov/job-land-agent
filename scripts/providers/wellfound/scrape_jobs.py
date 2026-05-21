@@ -29,7 +29,7 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
             scroll_to_load_all(page)
             raw_rows = collect_wellfound(page, country_name)
         finally:
-            browser.close()
+            page.close()
 
     jobs: list[ShallowJob] = []
     for r in raw_rows:

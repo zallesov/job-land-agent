@@ -29,7 +29,7 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
         try:
             raw_rows = collect_greenhouse(page, search)
         finally:
-            browser.close()
+            page.close()
 
     jobs: list[ShallowJob] = []
     for r in raw_rows:
