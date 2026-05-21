@@ -3,21 +3,28 @@ from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
 from scripts.providers._shared.job_filter import is_relevant
-from scripts.scrape_jobleads import (
-    LOCATION_PRESETS, build_feed_url, collect_jobleads,
-)
+from scripts.scrape_jobleads import JOBLEADS_BASE, collect_jobleads
 
 
-def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
-    preset_key = location.lower()
-    if preset_key not in LOCATION_PRESETS:
-        raise ValueError(f"Unknown location: {location!r}")
-    preset = LOCATION_PRESETS[preset_key]
+def scrape_jobs(
+    location: dict,
+    cdp_url: str,
+    titles: list[str] | None = None,
+) -> list[ShallowJob]:
+    country_code = location["country_code"]
+    country = location["country"]
+    city = location["city"]
+    url_params = (
+        f"location_country={country_code}"
+        f"&filter_by_contractType=full_time"
+        f"&filter_by_remote=remote"
+        f"&minSalary=100000"
+    )
     search = {
-        "label": f"{location.title()} Remote",
+        "label": f"{city} Remote",
         "query": "",
-        "country": preset["country"],
-        "url": build_feed_url(preset),
+        "country": country,
+        "url": f"{JOBLEADS_BASE}?view=for-you&{url_params}",
     }
 
     raw_rows: list[dict] = []
@@ -47,4 +54,7 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
         )
         if is_relevant({"title": j.title}):
             jobs.append(j)
+
+    if titles:
+        jobs = [j for j in jobs if any(t.lower() in j.title.lower() for t in titles)]
     return jobs
