@@ -16,7 +16,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AutoJobs",
+  title: "JobLandAgent",
   description: "Automated job search pipeline",
 };
 
