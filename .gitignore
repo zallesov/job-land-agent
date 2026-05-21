@@ -1,2 +1,73 @@
-tmp/
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.db.backup*
+*.sqlite
+
+# Data exports / backups
+*.xlsx
+*.xls
 outputs/
+tmp/
+
+# CV / personal docs (sensitive)
+*.pdf
+cv_extracted.txt
+cv_master_content.md
+ALEKSANDR_ZALESOV*
+page1_nano_prompt.txt
+page2_nano_prompt.txt
+
+# Scrapers / playwright
+.playwright-mcp/
+playwright-mcp/
+
+# Research outputs (one-off, not source)
+berlin_*.txt
+berlin_*.json
+*_research*.json
+*_research*.md
+visited_companies.json
+explee_remote_ai_companies.json
+makersite_research.json
+
+# One-off scripts (root-level)
+generate_cv_pdf.py
+playwright_explee.py
+parse_contentful.py
+research_job57.py
+insert_*.sql
+update_job.sql
+
+# Dashboard one-offs
+dashboard/research_*.py
+dashboard/run_*.py
+dashboard/runner.py
+dashboard/setup_check.py
+dashboard/check_pkgs.py
+dashboard/sparetech_live.py
+dashboard/run_research.sh
+dashboard/plan.txt
+dashboard/exness_research*.json
+dashboard/form3_research.md
+dashboard/sparetech_research_report.md
+
+# Node
+dashboard/node_modules/
+dashboard/.next/
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Codex backups
+.codex.bak/
+
+# macOS
+.DS_Store
+.AppleDouble
