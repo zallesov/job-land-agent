@@ -20,7 +20,7 @@ export function Logo({ iconSize = 22 }: { iconSize?: number }) {
         <circle cx="16" cy="16" r="2.5" fill="#22c55e" />
       </svg>
       <span className="logo-text text-lg font-black tracking-tight">
-        Auto<span style={{ letterSpacing: "-0.02em" }}>Jobs</span>
+        JobLand<span style={{ letterSpacing: "-0.02em" }}>Agent</span>
       </span>
     </div>
   );
