@@ -3,7 +3,7 @@ from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
 from scripts.providers._shared.job_filter import is_relevant
-from scripts.scrape_sprout import LOCATION_PRESETS, SPROUT_BASE, collect_sprout
+from scripts.scrape_sprout import SPROUT_BASE, collect_sprout
 
 DEFAULT_TITLES = [
     "Software Engineer", "Backend Engineer", "AI Engineer",
@@ -11,11 +11,14 @@ DEFAULT_TITLES = [
 ]
 
 
-def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
-    preset_key = location.lower()
-    if preset_key not in LOCATION_PRESETS:
-        raise ValueError(f"Unknown location: {location!r}")
-    country_name = {"berlin": "Germany", "spain": "Spain"}.get(preset_key, location)
+def scrape_jobs(
+    location: dict,
+    cdp_url: str,
+    titles: list[str] | None = None,
+) -> list[ShallowJob]:
+    city = location["city"]
+    country = location["country"]
+    effective_titles = titles or DEFAULT_TITLES
 
     raw_rows: list[dict] = []
     with sync_playwright() as pw:
@@ -27,9 +30,9 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
             page.wait_for_timeout(2000)
             raw_rows = collect_sprout(
                 page,
-                titles=DEFAULT_TITLES,
-                location=LOCATION_PRESETS[preset_key],
-                country=country_name,
+                titles=effective_titles,
+                location=city,
+                country=country,
             )
         finally:
             page.close()
@@ -44,7 +47,7 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
             company=r["company"],
             url=r["url"],
             location=r.get("location", ""),
-            country=r.get("country") or country_name,
+            country=r.get("country") or country,
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salary") or None,

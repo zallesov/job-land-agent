@@ -4,17 +4,19 @@ from playwright.sync_api import sync_playwright
 from scripts.pipeline.types import ShallowJob
 from scripts.providers._shared.job_filter import is_relevant
 from scripts.scrape_wellfound import (
-    LOCATION_PRESETS, WELLFOUND_BASE,
+    WELLFOUND_BASE,
     apply_filters, change_location, scroll_to_load_all, collect_wellfound,
 )
 
 
-def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
-    preset_key = location.lower()
-    if preset_key not in LOCATION_PRESETS:
-        raise ValueError(f"Unknown location: {location!r}")
-    country_name = {"berlin": "Germany", "spain": "Spain"}.get(preset_key, location)
-    location_query = LOCATION_PRESETS[preset_key]
+def scrape_jobs(
+    location: dict,
+    cdp_url: str,
+    titles: list[str] | None = None,
+) -> list[ShallowJob]:
+    city = location["city"]
+    country = location["country"]
+    location_query = f"{city}, {country}"
 
     raw_rows: list[dict] = []
     with sync_playwright() as pw:
@@ -27,7 +29,7 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
             apply_filters(page)
             change_location(page, location_query)
             scroll_to_load_all(page)
-            raw_rows = collect_wellfound(page, country_name)
+            raw_rows = collect_wellfound(page, country)
         finally:
             page.close()
 
@@ -48,4 +50,7 @@ def scrape_jobs(location: str, cdp_url: str) -> list[ShallowJob]:
         )
         if is_relevant({"title": j.title}):
             jobs.append(j)
+
+    if titles:
+        jobs = [j for j in jobs if any(t.lower() in j.title.lower() for t in titles)]
     return jobs
