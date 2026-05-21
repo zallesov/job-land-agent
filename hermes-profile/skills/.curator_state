@@ -1,0 +1,9 @@
+{
+  "last_report_path": "/Users/zall/.hermes/profiles/interviewprep/logs/curator/20260520-142819",
+  "last_run_at": "2026-05-20T14:28:19.773517+00:00",
+  "last_run_duration_seconds": 292.501324,
+  "last_run_summary": "auto: no changes; llm: All done. Here's the final summary.\n\n---\n\n## Curator pass: 4 agent-created skills, 1 cluster processed, 1 archive\n\n**Cluster `resume-*`** — `resume-and-cv-authoring` and `resume-pdf-workflow` were two narrow slices of the same resume workfl…\narchived 1 skill(s):\n  • resume-pdf-workflow → resume-and-cv-authoring\nfull report: hermes curator status\nkeep an umbrella stable: hermes curator pin resume-and-cv-authoring",
+  "last_run_summary_shown_at": "2026-05-13T14:26:39.935898+00:00",
+  "paused": false,
+  "run_count": 1
+}

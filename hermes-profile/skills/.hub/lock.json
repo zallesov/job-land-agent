@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "installed": {
+    "nano-pdf": {
+      "source": "url",
+      "identifier": "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/skills/productivity/nano-pdf/SKILL.md",
+      "trust_level": "community",
+      "scan_verdict": "caution",
+      "content_hash": "sha256:4243b329789c6d7f",
+      "install_path": "nano-pdf",
+      "files": [
+        "SKILL.md"
+      ],
+      "metadata": {
+        "url": "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/skills/productivity/nano-pdf/SKILL.md",
+        "awaiting_name": false
+      },
+      "installed_at": "2026-05-18T12:31:18.137052+00:00",
+      "updated_at": "2026-05-18T12:31:18.137055+00:00"
+    }
+  }
+}

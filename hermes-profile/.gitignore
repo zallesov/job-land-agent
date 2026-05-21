@@ -1,0 +1,41 @@
+# Runtime state (do not version)
+state.db
+state.db-shm
+state.db-wal
+home/
+sessions/
+logs/
+cache/
+audio_cache/
+image_cache/
+sandboxes/
+workspace/
+pastes/
+plans/
+lsp/
+bin/
+hooks/
+cron/
+pairing/
+
+# Secrets
+.env
+auth.json
+
+# Transient files
+*.log
+*.pid
+*.lock
+processes.json
+channel_directory.json
+gateway_state.json
+.hermes_history
+.skills_prompt_snapshot.json
+.update_check
+models_dev_cache.json
+ollama_cloud_models_cache.json
+interrupt_debug.log
+memories/
+
+# OS junk
+.DS_Store
