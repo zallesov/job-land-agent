@@ -8,13 +8,10 @@ board view at /jobs?view=board. Each card opens a detail panel; the "View
 Original" button navigates to the source ATS listing.
 
 Usage:
-  python3 scripts/scrape_sprout.py --location berlin
-  python3 scripts/scrape_sprout.py --location berlin \
-    --titles "Software Engineer" "AI Engineer" "Engineering Manager"
-  python3 scripts/scrape_sprout.py --location spain --titles "AI Engineer"
+  python3 scripts/scrape_sprout.py
+  python3 scripts/scrape_sprout.py --titles "Software Engineer" "AI Engineer" "Engineering Manager"
 
 Options:
-  --location <name>       Named preset: berlin | spain
   --titles <str...>       Job titles to search (one search per title)
   --cdp-url <url>         CDP endpoint (default: http://localhost:9222)
   --date <YYYY-MM-DD>     Override today's date in output filename
@@ -30,6 +27,8 @@ import time
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from scripts.job_filter import is_relevant
 
 LOCATION_PRESETS: dict[str, str] = {
@@ -40,9 +39,107 @@ LOCATION_PRESETS: dict[str, str] = {
 SPROUT_BASE = "https://app.usesprout.com"
 PROJECT_ROOT = Path(__file__).parent.parent
 
+COUNTRY_CODE_TO_PRESET: dict[str, str] = {
+    "DE": "berlin",
+    "ES": "spain",
+}
+
+
+def load_config() -> dict:
+    user_yaml = PROJECT_ROOT / "config" / "user.yaml"
+    if not user_yaml.exists():
+        return {}
+    try:
+        import yaml  # noqa: PLC0415
+        return yaml.safe_load(user_yaml.read_text()) or {}
+    except Exception as e:
+        print(f"[WARN] Could not load config/user.yaml: {e}", file=sys.stderr, flush=True)
+        return {}
+
+
+def config_location_keys(cfg: dict) -> list[str]:
+    keys: list[str] = []
+    for loc in cfg.get("locations", []):
+        key = COUNTRY_CODE_TO_PRESET.get(loc.get("country_code", ""))
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
 
 def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
+
+
+def set_work_location_filter(page, preferred: str) -> None:
+    """Set Work Location filter in Sprout UI from config work_style.preferred.
+
+    Opens the Filters dropdown, expands Work Location, and sets the
+    appropriate checkbox (Remote/Hybrid/In Person). Also unchecks
+    'Include unknown work location' to get only exact matches.
+    """
+    mapping = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "In Person"}
+    label = mapping.get(preferred.lower(), "Remote")
+
+    try:
+        # Open Filters dropdown
+        btn = page.locator(
+            'button[data-slot="dropdown-menu-trigger"]:has-text("Filters")'
+        ).first
+        if btn.count() == 0:
+            print("  [WARN] Filters button not found — skipping work location filter",
+                  flush=True)
+            return
+        btn.click()
+        page.wait_for_timeout(800)
+
+        # Expand Work Location section (may already be expanded)
+        wl = page.locator('[role="menuitem"]:has-text("Work Location")').first
+        if wl.count() > 0:
+            expanded = wl.get_attribute("aria-expanded") or wl.get_attribute(
+                "data-state"
+            )
+            if expanded != "true":
+                wl.click()
+                page.wait_for_timeout(500)
+
+        # Set the correct checkbox, unset the others
+        for opt_text in ["Remote", "Hybrid", "In Person"]:
+            cb = page.locator(
+                f'[role="menuitemcheckbox"]:has-text("{opt_text}")'
+            ).first
+            if cb.count() == 0:
+                continue
+            checked = cb.get_attribute("aria-checked") or cb.get_attribute(
+                "data-state"
+            )
+            should_be = (opt_text == label)
+            if (checked == "true") != should_be:
+                cb.click()
+                page.wait_for_timeout(300)
+
+        # Uncheck "Include unknown work location"
+        unknown = page.locator(
+            '[role="menuitemcheckbox"]:has-text("Include unknown work location")'
+        ).first
+        if unknown.count() > 0:
+            checked = unknown.get_attribute("aria-checked") or unknown.get_attribute(
+                "data-state"
+            )
+            if checked == "true":
+                unknown.click()
+                page.wait_for_timeout(300)
+
+        # Close dropdown
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+        print(f"    Work Location → {label!r}", flush=True)
+
+    except Exception as e:
+        print(f"  [WARN] set_work_location_filter: {e}", flush=True)
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
 
 
 def search_jobs(page, title: str, location: str) -> bool:
@@ -238,10 +335,28 @@ def open_card_and_get_url(page, card_index: int) -> str | None:
         return None
 
 
-def collect_sprout(page, titles: list[str], location: str, country: str, max_jobs: int = 0) -> list[dict]:
+def _known_dedup_keys(db_path: str) -> set[str]:
+    """Return all dedup_keys already in the DB."""
+    try:
+        import sqlite3  # noqa: PLC0415
+        con = sqlite3.connect(db_path)
+        try:
+            return {row[0] for row in con.execute("SELECT dedup_key FROM jobs").fetchall()}
+        finally:
+            con.close()
+    except Exception:
+        return set()
+
+
+def collect_sprout(page, titles: list[str], location: str, country: str, max_jobs: int = 0,
+                   db_path: str | None = None) -> list[dict]:
     """Run searches and collect jobs with dedup by original URL."""
     seen_urls: set[str] = set()
     all_jobs: list[dict] = []
+
+    known_keys = _known_dedup_keys(db_path) if db_path else set()
+    if known_keys:
+        print(f"  [dedup] {len(known_keys)} jobs already in DB — will skip matching cards", flush=True)
 
     # Clean up stale pages from previous runs
     context = page.context
@@ -274,6 +389,12 @@ def collect_sprout(page, titles: list[str], location: str, country: str, max_job
             # Quick dedup by company+title within same search
             dup_key = f"{summary['company']}|{summary['title']}"
             if any(j.get("_dup_key") == dup_key for j in all_jobs):
+                continue
+
+            # Skip cards already in DB — no need to open the page
+            db_key = f"{summary['company']}::{summary['title']}"
+            if db_key in known_keys:
+                print(f"    [skip] {summary['company'][:20]} - {summary['title'][:50]} (in DB)", flush=True)
                 continue
 
             print(f"    [{len(all_jobs)+1}] {summary['company'][:20]} - {summary['title'][:50]}", flush=True)
@@ -385,90 +506,95 @@ def enrich_sprout_job(page, row: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--location", help="Named preset: berlin | spain")
-    parser.add_argument("--titles", nargs="+",
-                        default=["Software Engineer", "AI Engineer", "Engineering Manager"],
-                        help="Job titles to search")
+    parser.add_argument("--titles", nargs="+", help="Override: job titles to search")
     parser.add_argument("--cdp-url", default="http://localhost:9222")
     parser.add_argument("--output-dir", type=Path,
                         default=PROJECT_ROOT / "outputs" / "sprout" / "runs")
     parser.add_argument("--date", default=date.today().isoformat())
-    parser.add_argument("--max-jobs", type=int, default=0,
-                        help="Limit total jobs (0 = all)")
+    parser.add_argument("--max-jobs", type=int, default=0)
     args = parser.parse_args()
 
-    if not args.location or args.location.lower() not in LOCATION_PRESETS:
-        print(f"Unknown location: {args.location!r}. Known: {list(LOCATION_PRESETS)}",
+    cfg = load_config()
+    titles: list[str] = args.titles or cfg.get("search_terms", [])
+    work_style = cfg.get("work_style", {})
+    preferred_work_type = work_style.get("preferred", "remote")
+
+    location_keys = config_location_keys(cfg)
+    if not location_keys:
+        print("No locations in config/user.yaml. Add locations with country_code DE or ES.",
               file=sys.stderr)
         return 2
 
-    location_str = LOCATION_PRESETS[args.location.lower()]
-    country = args.location.title()
-    location_slug = slugify(args.location)
-    output_file = args.output_dir / f"sprout_jobs_live_{args.date}_{location_slug}.json"
     args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"Location: {args.location} -> {location_str}", flush=True)
-    print(f"Titles: {args.titles}", flush=True)
     print(f"CDP: {args.cdp_url}", flush=True)
-    print(f"Output: {output_file}", flush=True)
+    print(f"Locations: {location_keys}", flush=True)
+    print(f"Titles: {titles}", flush=True)
 
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import sync_playwright  # noqa: PLC0415
 
     with sync_playwright() as pw:
-        print("Connecting to Chrome via CDP...", flush=True)
-        try:
-            browser = pw.chromium.connect_over_cdp(args.cdp_url)
-        except Exception as e:
-            print(f"ERROR: {e}", file=sys.stderr)
-            return 1
-
+        browser = pw.chromium.connect_over_cdp(args.cdp_url)
         context = browser.contexts[0]
 
-        # Close ALL existing pages from prior runs/stale sessions
-        for p in list(context.pages):
-            try:
-                p.close()
-            except Exception:
-                pass
+        for location_key in location_keys:
+            if location_key not in LOCATION_PRESETS:
+                print(f"  [SKIP] Unknown preset {location_key!r}", file=sys.stderr, flush=True)
+                continue
 
-        page = context.new_page()
+            location_str = LOCATION_PRESETS[location_key]
+            location_slug = slugify(location_key)
+            output_file = args.output_dir / f"sprout_jobs_live_{args.date}_{location_slug}.json"
+            print(f"\n=== {location_key.upper()} -> {location_str} ===", flush=True)
+            print(f"Output: {output_file}", flush=True)
 
-        # Navigate to board view
-        print("Loading board view...", flush=True)
-        page.goto(f"{SPROUT_BASE}/jobs?view=board", wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(4000)
+            # Clean up stale pages from previous location
+            for p in list(context.pages):
+                if "usesprout.com" not in p.url:
+                    try:
+                        p.close()
+                    except Exception:
+                        pass
 
-        # Check if logged in
-        if "sign-in" in page.url or "auth" in page.url:
-            print(f"\n⚠️  AUTH REQUIRED: Sprout login needed.", flush=True)
-            print("Please log in to Sprout in the Chrome browser window, then re-run.", flush=True)
-            print("Exiting with code 10 to signal pipeline pause.", flush=True)
-            raise SystemExit(10)
+            page = context.new_page()
 
-        jobs = collect_sprout(page, list(args.titles), location_str, country, args.max_jobs)
-        print(f"Enriching {len(jobs)} jobs...", flush=True)
-        for i, row in enumerate(jobs):
-            print(f"  [{i+1}/{len(jobs)}] {row['url'][:80]}", flush=True)
-            enrich_sprout_job(page, row)
+            # Navigate to board view
+            print("Loading board view...", flush=True)
+            page.goto(f"{SPROUT_BASE}/jobs?view=board", wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(4000)
+
+            if "sign-in" in page.url or "auth" in page.url:
+                print(f"\n⚠️  AUTH REQUIRED: Sprout login needed.", flush=True)
+                print("Exiting with code 10 to signal pipeline pause.", flush=True)
+                browser.close()
+                raise SystemExit(10)
+
+            # Set work location filter from config (Remote/Hybrid/On-site)
+            set_work_location_filter(page, preferred_work_type)
+
+            db = str(PROJECT_ROOT / "jobs.db")
+            jobs = collect_sprout(page, titles, location_str, location_key.title(), args.max_jobs, db_path=db)
+            print(f"Enriching {len(jobs)} jobs...", flush=True)
+            for i, row in enumerate(jobs):
+                print(f"  [{i+1}/{len(jobs)}] {row['url'][:80]}", flush=True)
+                enrich_sprout_job(page, row)
+
+            page.close()
+
+            # Filter and save
+            rows_before = len(jobs)
+            final = [
+                j for j in jobs
+                if j.get("url") and j.get("title") and j.get("company")
+                and is_relevant(j)
+            ]
+            print(f"  Profile filter dropped {rows_before - len(final)} non-relevant jobs", flush=True)
+            output_file.write_text(json.dumps(final, indent=2, ensure_ascii=False) + "\n")
+            print(json.dumps({
+                "out": str(output_file), "count": len(final),
+                "dropped": rows_before - len(final),
+            }, indent=2), flush=True)
+
         browser.close()
-
-    # Filter and save
-    rows_before_filter = len(jobs)
-    final = [
-        j for j in jobs
-        if j.get("url") and j.get("title") and j.get("company")
-        and is_relevant(j)
-    ]
-    filter_dropped = rows_before_filter - len(final)
-    print(f"  Profile filter dropped {filter_dropped} non-relevant jobs", flush=True)
-    output_file.write_text(json.dumps(final, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({
-        "out": str(output_file),
-        "count": len(final),
-        "dropped": len(jobs) - len(final),
-        "titles_searched": len(args.titles),
-    }, indent=2))
     return 0
 
 

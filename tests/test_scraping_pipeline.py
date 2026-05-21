@@ -40,7 +40,7 @@ def test_happy_path(db_path):
         )
 
     mock_check_auth.assert_called_once_with("http://localhost:9222")
-    mock_scrape.assert_called_once_with(BERLIN, "http://localhost:9222", titles=None)
+    mock_scrape.assert_called_once_with(BERLIN, "http://localhost:9222", titles=None, db_path=db_path)
     mock_dedup.assert_called_once()
     mock_ingest.assert_called_once()
     mock_enrich.assert_called_once_with(jid, db_path=db_path)
@@ -107,5 +107,5 @@ def test_titles_passed_to_scrape_jobs(db_path):
         )
 
     mock_scrape.assert_called_once_with(
-        BERLIN, "http://localhost:9222", titles=["AI Engineer", "Software Engineer"]
+        BERLIN, "http://localhost:9222", titles=["AI Engineer", "Software Engineer"], db_path=db_path
     )

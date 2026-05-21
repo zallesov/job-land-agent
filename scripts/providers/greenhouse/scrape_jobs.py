@@ -11,6 +11,7 @@ def scrape_jobs(
     location: dict,
     cdp_url: str,
     titles: list[str] | None = None,
+    db_path: str | None = None,
 ) -> list[ShallowJob]:
     country_code = location["country_code"]
     country = location["country"]

@@ -52,7 +52,7 @@ def run(
     check_auth_fn(cdp_url)
 
     try:
-        raw_jobs = scrape_jobs_fn(location, cdp_url, titles=titles)
+        raw_jobs = scrape_jobs_fn(location, cdp_url, titles=titles, db_path=db_path)
     except Exception as e:
         from scripts.telegram_notify import pipeline_failure
         pipeline_failure(provider, "scrape", str(e), "")
