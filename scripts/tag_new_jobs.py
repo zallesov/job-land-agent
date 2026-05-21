@@ -17,7 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from db import get_connection
 
 ROLE_KEYWORDS = {
-    "engineering_manager": ["engineering manager", "em ", "head of engineering", "vp engineering"],
+    "engineering_manager": [
+        "engineering manager", "engineering lead", "engineering director",
+        "head of engineering", "vp of engineering", "vp engineering",
+        "director of engineering", "eng manager", "eng lead",
+    ],
     "ai_engineer": ["ai engineer", "ml engineer", "machine learning", "llm", "generative ai"],
     "backend": ["backend", "back-end", "server-side", "api engineer", "platform engineer"],
     "frontend": ["frontend", "front-end", "react engineer", "vue engineer", "ui engineer"],

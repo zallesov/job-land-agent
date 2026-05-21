@@ -345,6 +345,11 @@ $HERMES_HOME/memories/      Memory files (MEMORY.md, USER.md) — see below
 
 Profiles use `~/.hermes/profiles/<name>/` with the same layout.
 
+**Version-controlling a profile:** profiles can be moved into a git repo
+(alongside project files) and symlinked back. See
+`references/profile-version-control.md` for the full recipe:
+copy → .gitignore → symlink → git commit → verify.
+
 ### Memory File Locations
 
 The built-in memory provider stores data in two plain Markdown files:

@@ -3,25 +3,28 @@
 Scrape Greenhouse job search results and save normalized JSON.
 
 Usage:
-  # Named location preset + titles:
+  # Named location preset — personalised "for-you" feed (default):
+  python3 scripts/scrape_greenhouse.py --location berlin
+  python3 scripts/scrape_greenhouse.py --location spain
+
+  # Keyword search by title (use only if feed is insufficient):
   python3 scripts/scrape_greenhouse.py \
     --location berlin \
-    --titles "Software Engineer" "AI Engineer" "Engineering Manager"
+    --titles "Software Engineer" "AI Engineer"
 
   # Custom search URL:
   python3 scripts/scrape_greenhouse.py \
-    --search-url "https://my.greenhouse.io/jobs?query=AI+Engineer&location=Berlin..." \
+    --search-url "https://my.greenhouse.io/jobs?view=for-you&..." \
     --country Germany --location-label "Berlin"
 
 Options:
   --location <name>       Named preset: berlin | spain
-  --titles <str...>       Job titles (builds one search URL per title × location)
+  --titles <str...>       Job titles for keyword search (omit to use personalised feed)
   --search-url <url>      Raw search URL (can repeat; overrides --location + --titles)
   --country <str>         Country label for output JSON (used with --search-url)
   --location-label <str>  Label for output filename (used with --search-url)
-  --output-dir <path>     Default: outputs/greenhouse/runs/ (relative to project root)
   --browser-profile <p>   Persistent Chromium profile dir (default: ~/.interviews-browser-profile)
-  --wait-auth             If on auth page, wait for user to log in; otherwise fail
+  --cdp-url <url>         CDP endpoint (default: http://localhost:9222)
   --headless              Run headless (no visible browser window)
   --date <YYYY-MM-DD>     Override today's date in output filename
 """
@@ -35,6 +38,8 @@ import time
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote_plus
+
+from scripts.job_filter import is_relevant
 
 # ---------------------------------------------------------------------------
 # Named location presets  (location label → Greenhouse URL params + country)
@@ -65,7 +70,11 @@ def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
 
 
-def build_search_url(title: str, preset: dict) -> str:
+def build_feed_url(preset: dict) -> str:
+    return f"{GREENHOUSE_BASE}?view=for-you&{preset['url_params']}&work_type[]=remote"
+
+
+def build_title_url(title: str, preset: dict) -> str:
     return (
         f"{GREENHOUSE_BASE}"
         f"?query={quote_plus(title)}"
@@ -78,29 +87,18 @@ def is_auth_page(url: str) -> bool:
     return "/users/sign_in" in url
 
 
-def wait_for_auth(page, label: str) -> None:
-    print(f"\n[AUTH REQUIRED] Greenhouse login detected for: {label}", flush=True)
-    print("Please log in in the browser window, then press Enter here to continue...", flush=True)
-    input()
-    # Give the page a moment to settle after login
-    page.wait_for_timeout(2000)
-
-
-def collect_search(page, search: dict, wait_auth: bool) -> list[dict]:
+def collect_greenhouse(page, search: dict) -> list[dict]:
     """Navigate to one search URL and collect job cards."""
     page.goto(search["url"], wait_until="domcontentloaded", timeout=45000)
     page.wait_for_timeout(1500)
 
     if is_auth_page(page.url):
-        if wait_auth:
-            wait_for_auth(page, search["label"])
-            page.goto(search["url"], wait_until="domcontentloaded", timeout=45000)
-            page.wait_for_timeout(1500)
-        else:
-            raise RuntimeError(
-                f"Greenhouse auth required for {search['label']}. "
-                "Run with --wait-auth to authenticate interactively."
-            )
+        print(f"\n⚠️  AUTH REQUIRED: Greenhouse login needed for {search['label']}.",
+              flush=True)
+        print("Please log in to Greenhouse in the Chrome browser window, then re-run.",
+              flush=True)
+        print("Exiting with code 10 to signal pipeline pause.", flush=True)
+        raise SystemExit(10)
 
     # Scroll to load lazy content
     try:
@@ -166,11 +164,10 @@ def collect_search(page, search: dict, wait_auth: bool) -> list[dict]:
     return rows
 
 
-def enrich_job(page, row: dict) -> None:
-    """Visit the job detail page and fill in title, company, description."""
+def enrich_greenhouse_job(page, row: dict) -> None:
     try:
         page.goto(row["url"], wait_until="domcontentloaded", timeout=12000)
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(500)
         details = page.evaluate(
             """() => {
             const lines = (document.body.innerText || '').split('\\n').map(v => v.trim()).filter(Boolean);
@@ -178,10 +175,39 @@ def enrich_job(page, row: dict) -> None:
             const title = (tm && tm[1]) || lines.find(l => /engineer|manager|developer|lead|architect/i.test(l)) || '';
             const company = (tm && tm[2]) || '';
             const location = lines.find(l => /remote|berlin|germany|spain|espa/i.test(l)) || '';
-            const description = lines
-                .filter(l => l.length > 70 && !/^https?:/.test(l) && !/cookie|privacy|terms|sign in/i.test(l))
-                .slice(0, 8).join(' ').slice(0, 1800);
-            return { title, company, location, description };
+
+            // DOM selectors first; fall back to heuristic line scan
+            const descEl = document.querySelector('#content')
+                        || document.querySelector('#job_description')
+                        || document.querySelector('.job-description')
+                        || document.querySelector('[class*="description"]');
+            let description = '';
+            if (descEl) {
+                description = (descEl.innerText || '').trim().slice(0, 2000);
+            } else {
+                description = lines
+                    .filter(l => l.length > 70 && !/^https?:/.test(l) && !/cookie|privacy|terms|sign in/i.test(l))
+                    .slice(0, 10).join(' ').slice(0, 2000);
+            }
+            const salaryRaw = lines.find(l =>
+                /\\d/.test(l) && /[\\$€£]|USD|EUR|GBP|salary|compensation/i.test(l) &&
+                !/cookie|privacy|terms|sign in|copyright/i.test(l)
+            ) || '';
+            const timeEl = document.querySelector('time[datetime]');
+            let postingDate = '';
+            if (timeEl) {
+                const dt = timeEl.getAttribute('datetime') || '';
+                const m = dt.match(/(\\d{4}-\\d{2}-\\d{2})/);
+                if (m) postingDate = m[1];
+            }
+            if (!postingDate) {
+                const dateLine = lines.find(l => /posted|updated/i.test(l) && /\\d{4}|\\d+\\s*(day|week|month)/i.test(l));
+                if (dateLine) {
+                    const iso = dateLine.match(/(\\d{4}-\\d{2}-\\d{2})/);
+                    if (iso) postingDate = iso[1];
+                }
+            }
+            return { title, company, location, description, salaryRaw, postingDate };
             }"""
         )
         if details["title"]:
@@ -192,6 +218,10 @@ def enrich_job(page, row: dict) -> None:
             row["location"] = details["location"]
         if details["description"]:
             row["description"] = details["description"]
+        if details.get("salaryRaw"):
+            row["salaryRaw"] = details["salaryRaw"]
+        if details.get("postingDate"):
+            row["postingDate"] = details["postingDate"]
     except Exception as e:
         row["scrapeError"] = str(e)[:300]
 
@@ -207,9 +237,12 @@ def main() -> int:
                         help="Location label for filename (with --search-url)")
     parser.add_argument("--output-dir", type=Path,
                         default=PROJECT_ROOT / "outputs" / "greenhouse" / "runs")
-    parser.add_argument("--browser-profile", type=Path, default=DEFAULT_PROFILE)
-    parser.add_argument("--wait-auth", action="store_true")
-    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--browser-profile", type=Path, default=DEFAULT_PROFILE,
+                        help="[DEPRECATED] CDP connection uses existing Chrome profile")
+    parser.add_argument("--cdp-url", default="http://localhost:9222",
+                        help="CDP endpoint (default: http://localhost:9222)")
+    parser.add_argument("--headless", action="store_true",
+                        help="[DEPRECATED] CDP uses existing Chrome — ignored")
     parser.add_argument("--date", default=date.today().isoformat())
     args = parser.parse_args()
 
@@ -234,14 +267,22 @@ def main() -> int:
             print(f"Unknown location preset: {args.location!r}. Known: {list(LOCATION_PRESETS)}", file=sys.stderr)
             return 2
         preset = LOCATION_PRESETS[preset_key]
-        titles = args.titles or ["Software Engineer", "AI Engineer", "Engineering Manager"]
-        for title in titles:
+        if args.titles:
+            for title in args.titles:
+                searches.append({
+                    "label": f"{title} - {args.location.title()} Remote",
+                    "query": title,
+                    "country": preset["country"],
+                    "locationLabel": f"{args.location.title()} Remote",
+                    "url": build_title_url(title, preset),
+                })
+        else:
             searches.append({
-                "label": f"{title} - {args.location.title()} Remote",
-                "query": title,
+                "label": f"{args.location.title()} Remote",
+                "query": "",
                 "country": preset["country"],
                 "locationLabel": f"{args.location.title()} Remote",
-                "url": build_search_url(title, preset),
+                "url": build_feed_url(preset),
             })
     else:
         print("Provide --location <preset> or --search-url <url>", file=sys.stderr)
@@ -251,50 +292,51 @@ def main() -> int:
     output_file = args.output_dir / f"greenhouse_jobs_live_{args.date}_{location_slug}.json"
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Browser profile: {args.browser_profile}", flush=True)
+    print(f"CDP: {args.cdp_url}", flush=True)
     print(f"Searches: {[s['label'] for s in searches]}", flush=True)
     print(f"Output: {output_file}", flush=True)
 
     from playwright.sync_api import sync_playwright  # noqa: PLC0415
 
-    args.browser_profile.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as pw:
-        ctx = pw.chromium.launch_persistent_context(
-            str(args.browser_profile),
-            headless=args.headless,
-            args=["--no-first-run", "--disable-blink-features=AutomationControlled"],
-            ignore_https_errors=True,
-        )
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        # Connect to existing Chrome via CDP — inherits profile, auth, cookies
+        browser = pw.chromium.connect_over_cdp(args.cdp_url)
+        context = browser.contexts[0]
+        page = context.new_page()
 
         rows_by_url: dict[str, dict] = {}
         for search in searches:
             print(f"  Scraping: {search['label']}", flush=True)
             try:
-                cards = collect_search(page, search, args.wait_auth)
+                cards = collect_greenhouse(page, search)
                 print(f"    Found {len(cards)} cards", flush=True)
                 for card in cards:
                     rows_by_url.setdefault(card["url"], card)
             except Exception as e:
                 print(f"    ERROR: {e}", file=sys.stderr, flush=True)
-                ctx.close()
+                browser.close()
                 return 1
 
         rows = list(rows_by_url.values())
         print(f"Enriching {len(rows)} unique jobs...", flush=True)
         for i, row in enumerate(rows):
             print(f"  [{i+1}/{len(rows)}] {row['url'][:80]}", flush=True)
-            enrich_job(page, row)
+            enrich_greenhouse_job(page, row)
 
-        ctx.close()
+        browser.close()
 
     # Filter low-quality rows
+    rows_before_filter = len(rows)
     final_rows = [
         r for r in rows
         if r.get("url") and r.get("title") and r.get("company")
         and not re.match(r"^(Posted\b|Viewed\b|View job$|Applications$|Jobs$|Developers$)", r.get("title", ""), re.I)
+        and is_relevant(r)
     ]
+    filter_dropped = rows_before_filter - len(final_rows)
+
+    print(f"  Profile filter dropped {filter_dropped} non-relevant jobs",
+          flush=True)
 
     output_file.write_text(json.dumps(final_rows, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({

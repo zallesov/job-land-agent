@@ -17,16 +17,11 @@ export default async function DashboardPage({
     new_only: params.new_only === "1",
   };
   const jobs = listJobs(filters);
+  const initialJobId = params.job ? parseInt(params.job, 10) || null : null;
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800">
-        <h1 className="text-lg font-bold tracking-tight">Job Pipeline</h1>
-        <span className="text-sm text-gray-400">{jobs.length} jobs</span>
-      </header>
-      <div className="flex flex-1 overflow-hidden">
-        <JobListClient jobs={jobs} addJobAction={addManualJobAction} />
-      </div>
+    <div className="flex h-screen" style={{ background: "var(--bg)", color: "var(--text-1)" }}>
+      <JobListClient jobs={jobs} addJobAction={addManualJobAction} initialJobId={initialJobId} />
     </div>
   );
 }

@@ -88,6 +88,8 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   relevance_score: number | null;
   apply_verdict: string | null;
   trustworthiness_score: number | null;
+  is_researching: number;
+  is_scraping: number;
 })[] {
   const db = getDb();
   const conditions: string[] = ["j.deleted_at IS NULL"];
@@ -104,10 +106,22 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   const sql = `
     SELECT j.*,
            ja.relevance_score, ja.apply_verdict,
-           cr.trustworthiness_score
+           cr.trustworthiness_score,
+           CASE WHEN rc.job_id IS NOT NULL THEN 1 ELSE 0 END AS is_researching,
+           CASE WHEN sc.job_id IS NOT NULL THEN 1 ELSE 0 END AS is_scraping
     FROM jobs j
     LEFT JOIN job_assessments ja ON ja.job_id = j.id
     LEFT JOIN company_research cr ON cr.company_id = j.company_id
+    LEFT JOIN (
+      SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
+      FROM agent_commands
+      WHERE command_type = 'research_job' AND status IN ('pending', 'running')
+    ) rc ON rc.job_id = j.id
+    LEFT JOIN (
+      SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
+      FROM agent_commands
+      WHERE command_type = 'scrape_job' AND status IN ('pending', 'running')
+    ) sc ON sc.job_id = j.id
     ${where}
     ORDER BY
       CASE j.status WHEN 'new' THEN 0 ELSE 1 END,
@@ -176,6 +190,18 @@ export function softDeleteJob(id: number): void {
   db.prepare("UPDATE jobs SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(id);
 }
 
+export function createScrapeCommand(jobId: number, url: string): { commandId: number; existing: boolean } {
+  const db = getDb();
+  const existing = db.prepare(
+    "SELECT id FROM agent_commands WHERE command_type = 'scrape_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
+  ).get(jobId) as { id: number } | undefined;
+  if (existing) return { commandId: existing.id, existing: true };
+  const result = db.prepare(
+    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('scrape_job', ?, 'pending', 'ui')"
+  ).run(JSON.stringify({ job_id: jobId, url }));
+  return { commandId: result.lastInsertRowid as number, existing: false };
+}
+
 export function createResearchCommand(jobId: number): { commandId: number; existing: boolean } {
   const db = getDb();
   const existing = db.prepare(
@@ -184,6 +210,18 @@ export function createResearchCommand(jobId: number): { commandId: number; exist
   if (existing) return { commandId: existing.id, existing: true };
   const result = db.prepare(
     "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('research_job', ?, 'pending', 'ui')"
+  ).run(JSON.stringify({ job_id: jobId }));
+  return { commandId: result.lastInsertRowid as number, existing: false };
+}
+
+export function createApplyCommand(jobId: number): { commandId: number; existing: boolean } {
+  const db = getDb();
+  const existing = db.prepare(
+    "SELECT id FROM agent_commands WHERE command_type = 'apply_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
+  ).get(jobId) as { id: number } | undefined;
+  if (existing) return { commandId: existing.id, existing: true };
+  const result = db.prepare(
+    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('apply_job', ?, 'pending', 'ui')"
   ).run(JSON.stringify({ job_id: jobId }));
   return { commandId: result.lastInsertRowid as number, existing: false };
 }

@@ -51,6 +51,7 @@ def create_db(db_path: str) -> None:
         current_interview_status TEXT,
         source_payload_json TEXT,
         deleted_at TEXT,
+        salary_range TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -158,12 +159,15 @@ def create_db(db_path: str) -> None:
     CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at);
     """)
 
-    # Migrate existing DBs that predate deleted_at column
-    try:
-        cur.execute("ALTER TABLE jobs ADD COLUMN deleted_at TEXT")
-        con.commit()
-    except Exception:
-        pass
+    for migration_sql in [
+        "ALTER TABLE jobs ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE jobs ADD COLUMN salary_range TEXT",
+    ]:
+        try:
+            cur.execute(migration_sql)
+            con.commit()
+        except Exception:
+            pass
 
     con.commit()
     con.close()

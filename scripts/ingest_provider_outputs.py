@@ -29,6 +29,43 @@ def _extract_domain(url: str | None) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def _normalize_salary(raw: str, country: str = "") -> str:
+    if not raw:
+        return ""
+    raw_up = raw.upper()
+    if "€" in raw or "EUR" in raw_up:
+        currency = "EUR"
+    elif "£" in raw or "GBP" in raw_up:
+        currency = "GBP"
+    elif "$" in raw or "USD" in raw_up:
+        currency = "USD"
+    elif country in ("Germany", "Spain", "France", "Netherlands", "Austria"):
+        currency = "EUR"
+    else:
+        currency = "USD"
+    # Remove thousands separators (90.000 → 90000, 90,000 → 90000)
+    cleaned = re.sub(r"(\d)[,.](\d{3})\b", r"\1\2", raw)
+    nums = re.findall(r"\d+(?:\.\d+)?", cleaned)
+    values = []
+    for n in nums:
+        try:
+            v = float(n)
+            if v >= 10000:
+                v = round(v / 1000)
+            else:
+                v = round(v)
+            if 20 <= v <= 500:
+                values.append(v)
+        except ValueError:
+            pass
+    if not values:
+        return ""
+    values = sorted(set(values))
+    if len(values) >= 2:
+        return f"{values[0]}-{values[-1]}K {currency}"
+    return f"{values[0]}K {currency}"
+
+
 def _detect_remote_scope(location: str, description: str) -> str:
     text = f"{location} {description}".lower()
     if "fully remote" in text or "100% remote" in text:
@@ -44,8 +81,9 @@ def _detect_remote_scope(location: str, description: str) -> str:
 
 def normalize_job(raw: dict) -> dict:
     known = {"provider", "company", "title", "url", "description",
-             "applyUrl", "location", "country", "postingDate", "datePosted"}
+             "applyUrl", "location", "country", "postingDate", "datePosted", "salaryRaw"}
     extra = {k: raw[k] for k in raw if k not in known}
+    country = raw.get("country", "")
     return {
         "provider": raw.get("provider", "unknown"),
         "url": raw["url"].strip(),
@@ -54,11 +92,12 @@ def normalize_job(raw: dict) -> dict:
         "title": raw.get("title", ""),
         "description": raw.get("description", ""),
         "location": raw.get("location", ""),
-        "country": raw.get("country", ""),
+        "country": country,
         "remote_scope": _detect_remote_scope(
             raw.get("location", ""), raw.get("description", "")
         ),
         "date_posted": raw.get("postingDate") or raw.get("datePosted") or raw.get("postedRelative") or "",
+        "salary_range": _normalize_salary(raw.get("salaryRaw", ""), country),
         "source_payload": extra,
     }
 
@@ -116,6 +155,7 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
                     country=n["country"],
                     remote_scope=n["remote_scope"],
                     date_posted=n["date_posted"],
+                    salary_range=n["salary_range"] or None,
                     source_payload_json=json.dumps(n["source_payload"]),
                     status="new",
                 )
@@ -145,6 +185,9 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
                 if not existing["description"] and n["description"]:
                     set_parts.append("description = ?")
                     params.append(n["description"])
+                if not existing["salary_range"] and n["salary_range"]:
+                    set_parts.append("salary_range = ?")
+                    params.append(n["salary_range"])
                 params.append(job_id)
                 con.execute(
                     f"UPDATE jobs SET {', '.join(set_parts)} WHERE id = ?",
@@ -177,7 +220,11 @@ def find_latest_run_files() -> list[Path]:
         if not runs_dir.is_dir():
             continue
         json_files = sorted(runs_dir.glob("*_jobs_live_*.json"), reverse=True)
-        if json_files:
+        # Prefer the consolidated file (no location suffix) over partial files
+        consolidated = [f for f in json_files if not f.stem.rsplit("_", 1)[-1] in ("berlin", "spain")]
+        if consolidated:
+            files.append(consolidated[0])
+        elif json_files:
             files.append(json_files[0])
     return files
 

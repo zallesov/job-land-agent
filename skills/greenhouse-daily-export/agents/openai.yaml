@@ -1,0 +1,4 @@
+interface:
+  display_name: "Greenhouse Daily Export"
+  short_description: "Update a jobs workbook from Greenhouse saved searches."
+  default_prompt: "Update my jobs workbook from the configured Greenhouse searches."

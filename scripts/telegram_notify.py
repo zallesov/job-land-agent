@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_connection
 
-HERMES = str(Path.home() / ".local/bin/hermes")
+HERMES = "/Users/zall/.local/bin/hermes"
 TELEGRAM_TARGET = "telegram"
 
 

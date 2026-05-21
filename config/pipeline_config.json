@@ -5,14 +5,28 @@
       "skill": "greenhouse-scraper",
       "script": "scripts/scrape_greenhouse.py",
       "locations": ["berlin", "spain"],
-      "titles": ["Software Engineer", "AI Engineer", "Engineering Manager"]
+      "titles": []
     },
     {
       "name": "jobleads",
       "skill": "jobleads-scraper",
       "script": "scripts/scrape_jobleads.py",
       "locations": ["berlin", "spain"],
-      "titles": []
+      "titles": ["Software Engineer", "AI Engineer", "Engineering Manager"]
+    },
+    {
+      "name": "wellfound",
+      "skill": "wellfound-scraper",
+      "script": "scripts/scrape_wellfound.py",
+      "locations": ["berlin", "spain"],
+      "titles": ["Software Engineer", "AI Engineer", "Engineering Manager"]
+    },
+    {
+      "name": "sprout",
+      "skill": "sprout-scraper",
+      "script": "scripts/scrape_sprout.py",
+      "locations": ["berlin", "spain"],
+      "titles": ["Software Engineer", "AI Engineer", "Engineering Manager"]
     }
   ]
 }

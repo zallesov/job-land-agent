@@ -1,0 +1,4 @@
+interface:
+  display_name: "Consolidate Jobs Workbook"
+  short_description: "Append provider jobs into jobs_all.xlsx."
+  default_prompt: "Consolidate provider job workbooks into jobs_all.xlsx."

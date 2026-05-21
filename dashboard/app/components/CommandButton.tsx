@@ -9,11 +9,20 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "text-gray-500",
 };
 
-export function CommandButton({ jobId, commands, onDone }: {
+const STATUS_ICON: Record<string, string> = {
+  pending: "⟳",
+  running: "⟳",
+  succeeded: "✓",
+  failed: "✕",
+  cancelled: "–",
+};
+
+export function CommandButton({ jobId, commands, onDone, compact = false }: {
   jobId: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   commands: any[];
   onDone?: () => void;
+  compact?: boolean;
 }) {
   const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +45,26 @@ export function CommandButton({ jobId, commands, onDone }: {
     } finally {
       setTriggering(false);
     }
+  }
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {latest && (
+          <span className={`text-xs ${STATUS_COLOR[latest.status] ?? "text-gray-400"}`}>
+            {STATUS_ICON[latest.status] ?? "?"}
+          </span>
+        )}
+        <button
+          onClick={triggerResearch}
+          disabled={triggering || !canTrigger}
+          className="text-xs bg-purple-800 hover:bg-purple-700 disabled:opacity-40 rounded px-2 py-1"
+        >
+          {triggering ? "Queuing…" : "Research"}
+        </button>
+        {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+    );
   }
 
   return (

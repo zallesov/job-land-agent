@@ -209,8 +209,9 @@ def sanity_check_job(job_id: int) -> HermesResult
 
 # pipeline/hermes.py
 def hermes_call(skill: str, context: dict, timeout_sec: int = 300) -> HermesResult
-# Builds prompt + calls: hermes --profile interviewprep --skill {skill} --output-format json
-# Handles: timeout, non-zero exit, unparseable output → HermesResult(success=False)
+# Instantiates AIAgent (Hermes Python library). Skills auto-loaded via external_dirs config.
+# Prompt explicitly names the skill: "Use skill {skill}. job_id: X. url: Y. cv_path: Z"
+# Handles: timeout, exception, unparseable JSON → HermesResult(success=False)
 
 # pipeline/notify.py  ← new thin wrapper over existing telegram_notify.py
 # telegram_notify.py is kept unchanged (used by web UI, research_job.py, legacy pipeline)
@@ -225,55 +226,58 @@ def research_job(job_id: int) -> HermesResult
 
 ## Hermes Integration (`pipeline/hermes.py`)
 
-All Hermes communication is isolated in `hermes_call()`. Neither `enrich_job` nor `sanity_check_job`
-call the Hermes CLI directly. Hermes outputs structured JSON to stdout; Python owns all DB writes.
+All Hermes communication is isolated in `hermes_call()`. Uses the **Hermes Python library**
+(`from run_agent import AIAgent`) — not subprocess. Python owns all DB writes.
 
-**`cv_path` resolution:** Both `enrich_job` and `sanity_check_job` pass the CV to Hermes.
-Resolved as: `CV_PATH = PROJECT_ROOT / "cv_master_content.md"` (defined in `pipeline/hermes.py`).
+**Why Python library over CLI subprocess:**
+- `quiet_mode=True` → no terminal noise, `chat()` returns clean string directly
+- `max_iterations=10` → hard cap prevents runaway agent loops
+- `skip_context_files=True` → no project CLAUDE.md loaded per job (faster, deterministic)
+- No stdout parsing fragility (`extract_json_block` hack not needed)
+
+**Skills loading:** All skills in `~/.hermes/profiles/interviewprep/config.yaml` under
+`skills.external_dirs` are auto-indexed. The prompt names the skill explicitly — no `--skill` flag
+needed. Skills are loaded regardless; the prompt tells the agent which one to invoke.
+
+**`cv_path` resolution:** `CV_PATH = PROJECT_ROOT / "cv_master_content.md"` (defined at module level).
 
 **`build_prompt()` contract:**
 ```python
 def build_prompt(skill: str, context: dict) -> str:
-    # enrich-job  → "Enrich job 42. URL: https://... . CV: /path/cv.md"
-    # sanity-check-job → "Sanity check job 42. CV: /path/cv.md"
-    parts = [f"Run skill {skill}."]
+    # produces: "Use skill enrich-job. job_id: 42. url: https://... cv_path: /path/cv.md"
+    parts = [f"Use skill {skill}."]
     for k, v in context.items():
         parts.append(f"{k}: {v}")
     return " ".join(parts)
 ```
 
 ```python
+from run_agent import AIAgent   # Hermes Python library
+
 def hermes_call(skill: str, context: dict, timeout_sec: int = 300) -> HermesResult:
     prompt = build_prompt(skill, context)
-    cmd = [
-        "hermes", "--profile", "interviewprep",
-        prompt,
-        "--skill", skill,
-        "--workdir", PROJECT_ROOT,
-        "--output-format", "json",
-        "--no-interactive",
-    ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
-    except subprocess.TimeoutExpired:
-        return HermesResult(success=False, data={}, error="timeout", raw_output="")
-
-    if proc.returncode != 0:
-        return HermesResult(success=False, data={}, error=proc.stderr.strip(), raw_output=proc.stdout)
-
-    try:
-        # extract_json_block: finds first { ... } block in mixed stdout
-        # defined in pipeline/hermes.py as:
-        #   s = proc.stdout; return s[s.index("{"):s.rindex("}")+1]
-        data = json.loads(extract_json_block(proc.stdout))
-        success = data.get("status") == "success"
-        return HermesResult(success=success, data=data, error=data.get("error"), raw_output=proc.stdout)
+        agent = AIAgent(
+            quiet_mode=True,
+            skip_context_files=True,
+            max_iterations=10,
+        )
+        raw = agent.chat(prompt)   # blocks until done; returns final response string
     except Exception as e:
-        return HermesResult(success=False, data={}, error=f"parse error: {e}", raw_output=proc.stdout)
+        return HermesResult(success=False, data={}, error=str(e), raw_output="")
+
+    try:
+        # skill output is a JSON block somewhere in the response
+        s = raw; data = json.loads(s[s.index("{"):s.rindex("}")+1])
+        success = data.get("status") == "success"
+        return HermesResult(success=success, data=data, error=data.get("error"), raw_output=raw)
+    except Exception as e:
+        return HermesResult(success=False, data={}, error=f"parse error: {e}", raw_output=raw)
 ```
 
-**Hermes CLI flags:** exact flags (`--output-format`, `--no-interactive`) to be verified against
-actual Hermes CLI before implementation. Wrapper is designed for easy adjustment.
+**Note on timeout:** `AIAgent` has no built-in timeout parameter. Wrap `agent.chat()` in
+`concurrent.futures.ThreadPoolExecutor` with `future.result(timeout=timeout_sec)` if hard
+wall-clock timeout is required.
 
 ### Skill Output Contract
 

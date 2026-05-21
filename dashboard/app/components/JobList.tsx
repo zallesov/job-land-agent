@@ -1,35 +1,99 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { JobDetail } from "./JobDetail";
 import { updateJobAction } from "../actions";
+import { Logo } from "./Logo";
 
-const STATUS_COLORS: Record<string, string> = {
-  new: "bg-blue-900 text-blue-200",
-  interesting: "bg-green-900 text-green-200",
-  not_interested: "bg-gray-700 text-gray-400",
-  researching: "bg-yellow-900 text-yellow-200",
-  researched: "bg-purple-900 text-purple-200",
-  draft_ready: "bg-orange-900 text-orange-200",
-  applied: "bg-indigo-900 text-indigo-200",
-  interviewing: "bg-teal-900 text-teal-200",
-  rejected: "bg-red-900 text-red-300",
-  archived: "bg-gray-800 text-gray-500",
+export const STATUS_COLORS: Record<string, string> = {
+  new:            "bg-blue-900/60 text-blue-300",
+  interesting:    "bg-green-900/60 text-green-300",
+  not_interested: "bg-white/5 text-[var(--text-3)]",
+  researching:    "bg-yellow-900/60 text-yellow-300",
+  researched:     "bg-purple-900/60 text-purple-300",
+  draft_ready:    "bg-orange-900/60 text-orange-300",
+  applied:        "bg-indigo-900/60 text-indigo-300",
+  interviewing:   "bg-teal-900/60 text-teal-200",
+  rejected:       "bg-red-900/40 text-red-400",
+  archived:       "bg-white/5 text-[var(--text-3)]",
 };
 
+const INTERVIEW_PILL: Record<string, { bg: string; color: string }> = {
+  "Applied":    { bg: "rgba(96,165,250,0.12)",  color: "#60a5fa" },
+  "In process": { bg: "rgba(45,212,191,0.12)",  color: "#2dd4bf" },
+  "Rejected":   { bg: "rgba(248,113,113,0.12)", color: "#f87171" },
+  "Offer":      { bg: "rgba(34,197,94,0.15)",   color: "#22c55e" },
+  "Landed":     { bg: "rgba(167,139,250,0.15)", color: "#a78bfa" },
+};
+
+const VERDICT_LEFT: Record<string, string> = {
+  "Apply":              "border-l-[var(--green)]",
+  "Apply with caution": "border-l-[var(--amber)]",
+  "Skip":               "border-l-[var(--red-border)]",
+};
+
+const VERDICT_LABEL: Record<string, string> = {
+  "Apply":              "text-[var(--green)]",
+  "Apply with caution": "text-[var(--amber)]",
+  "Skip":               "text-[var(--text-3)]",
+};
+
+const STATUS_PRIORITY: Record<string, number> = {
+  interviewing: 0, applied: 1, draft_ready: 2, interesting: 3,
+  researched: 4, new: 5, researching: 6, not_interested: 7, rejected: 8, archived: 9,
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sortJobs(jobs: any[], sortBy: "newest" | "score" | "status"): any[] {
+  const arr = [...jobs];
+  if (sortBy === "newest") return arr.sort((a, b) => b.id - a.id);
+  if (sortBy === "score") {
+    return arr.sort((a, b) => {
+      const as_ = (a.relevance_score ?? -1) + (a.trustworthiness_score ?? -1);
+      const bs_ = (b.relevance_score ?? -1) + (b.trustworthiness_score ?? -1);
+      return as_ !== bs_ ? bs_ - as_ : b.id - a.id;
+    });
+  }
+  return arr.sort((a, b) => {
+    const ap = STATUS_PRIORITY[a.status] ?? 99;
+    const bp = STATUS_PRIORITY[b.status] ?? 99;
+    if (ap !== bp) return ap - bp;
+    const as_ = (a.relevance_score ?? -1) + (a.trustworthiness_score ?? -1);
+    const bs_ = (b.relevance_score ?? -1) + (b.trustworthiness_score ?? -1);
+    return bs_ - as_;
+  });
+}
+
 export function JobListClient({
-  jobs,
-  addJobAction,
+  jobs, addJobAction, initialJobId,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   jobs: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addJobAction: (fd: FormData) => Promise<any>;
+  initialJobId?: number | null;
 }) {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(initialJobId ?? null);
   const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
   const [addUrl, setAddUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"newest" | "score" | "status">("score");
+  const [applyOnly, setApplyOnly] = useState(false);
+  const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hasActive = jobs.some((j: any) => j.is_researching || j.is_scraping);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (hasActive) pollRef.current = setInterval(() => router.refresh(), 5000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [hasActive, router]);
+
+  function selectJob(id: number) {
+    setSelectedId(id);
+    router.replace(`?job=${id}`, { scroll: false });
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -38,8 +102,9 @@ export function JobListClient({
     try {
       const fd = new FormData();
       fd.set("url", addUrl);
-      await addJobAction(fd);
+      const result = await addJobAction(fd);
       setAddUrl("");
+      if (result?.id) selectJob(result.id);
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -47,67 +112,179 @@ export function JobListClient({
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const visibleJobs = sortJobs(
+    jobs.filter((job: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (deletedIds.has(job.id)) return false;
+      if (applyOnly && job.apply_verdict !== "Apply" && job.apply_verdict !== "Apply with caution") return false;
+      return true;
+    }),
+    sortBy,
+  );
+
   return (
     <>
-      <div className="w-[480px] flex flex-col border-r border-gray-800 overflow-hidden shrink-0">
-        <form onSubmit={handleAdd} className="flex gap-2 px-3 py-2 border-b border-gray-800">
+      {/* LEFT PANEL */}
+      <div
+        className="flex flex-col shrink-0 overflow-hidden"
+        style={{ width: 380, borderRight: "1px solid var(--border)" }}
+      >
+        {/* Header */}
+        <div style={{ borderBottom: "1px solid var(--border)", padding: "10px 12px" }}
+          className="flex items-center justify-between">
+          <Logo iconSize={20} />
+          <span className="font-data text-xs" style={{ color: "var(--text-3)" }}>
+            {visibleJobs.length}/{jobs.length}
+          </span>
+        </div>
+
+        {/* Add URL */}
+        <form onSubmit={handleAdd} className="flex gap-2 px-3 py-2"
+          style={{ borderBottom: "1px solid var(--border)" }}>
           <input
-            className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
-            placeholder="Add job URL…"
+            className="flex-1 rounded px-2 py-1.5 text-xs outline-none transition-colors"
+            style={{
+              background: "var(--surface-hi)", border: "1px solid var(--border-hi)",
+              color: "var(--text-1)",
+            }}
+            placeholder="Paste job URL to add…"
             value={addUrl}
             onChange={(e) => setAddUrl(e.target.value)}
           />
           <button
-            type="submit"
-            disabled={adding}
-            className="bg-blue-700 hover:bg-blue-600 text-white rounded px-3 py-1 text-sm disabled:opacity-50"
+            type="submit" disabled={adding}
+            className="rounded px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
+            style={{ background: "var(--blue)", color: "#000" }}
           >
             {adding ? "…" : "Add"}
           </button>
         </form>
-        {addError && <div className="text-xs text-red-400 px-3 py-1">{addError}</div>}
-        <div className="overflow-y-auto flex-1">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          {jobs.filter((job: any) => !deletedIds.has(job.id)).map((job: any) => (
-            <button
-              key={job.id}
-              onClick={() => setSelectedId(job.id)}
-              className={`w-full text-left px-3 py-2 border-b border-gray-800 hover:bg-gray-900 ${
-                selectedId === job.id ? "bg-gray-900 border-l-2 border-l-blue-500" : ""
-              }`}
+        {addError && <div className="text-xs px-3 py-1" style={{ color: "var(--red)" }}>{addError}</div>}
+
+        {/* Sort + filter bar */}
+        <div className="flex items-center gap-1 px-3 py-1.5"
+          style={{ borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
+          {(["score", "status", "newest"] as const).map((opt) => (
+            <button key={opt} onClick={() => setSortBy(opt)}
+              className="text-xs px-2 py-0.5 rounded transition-colors"
+              style={sortBy === opt
+                ? { background: "var(--surface-hi)", color: "var(--text-1)", border: "1px solid var(--border-hi)" }
+                : { color: "var(--text-2)", border: "1px solid transparent" }
+              }
             >
-              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLORS[job.status] ?? "bg-gray-700 text-gray-300"}`}>
-                  {job.status}
-                </span>
-                {job.relevance_score != null && <span className="text-xs text-purple-400">R:{job.relevance_score}</span>}
-                {job.trustworthiness_score != null && <span className="text-xs text-teal-400">T:{job.trustworthiness_score}</span>}
-                {job.apply_verdict && <span className="text-xs text-yellow-300">{job.apply_verdict}</span>}
-                <span className="text-xs text-gray-500 ml-auto">{job.provider}</span>
-              </div>
-              <div className="font-medium text-sm truncate">{job.title ?? "(no title)"}</div>
-              <div className="text-xs text-gray-400 truncate">
-                {job.posted_company_name ?? "—"} · {job.country ?? "?"} · {job.remote_scope ?? "?"}
-              </div>
-              <div className="text-xs text-gray-600">{job.first_seen?.slice(0, 10)}</div>
+              {opt === "score" ? "Score" : opt === "status" ? "Status" : "New"}
             </button>
           ))}
+          <div style={{ width: 1, height: 12, background: "var(--border-hi)", margin: "0 4px" }} />
+          <button onClick={() => setApplyOnly(v => !v)}
+            className="text-xs px-2 py-0.5 rounded transition-colors"
+            style={applyOnly
+              ? { background: "var(--green-bg)", color: "var(--green)", border: "1px solid var(--green-border)" }
+              : { color: "var(--text-2)", border: "1px solid transparent" }
+            }
+          >
+            Apply only
+          </button>
+        </div>
+
+        {/* Job list */}
+        <div className="overflow-y-auto flex-1">
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {visibleJobs.map((job: any) => {
+            const isSelected = selectedId === job.id;
+            const verdictBorder = VERDICT_LEFT[job.apply_verdict ?? ""] ?? "border-l-transparent";
+            const verdictColor = VERDICT_LABEL[job.apply_verdict ?? ""] ?? "";
+            return (
+              <button
+                key={job.id}
+                onClick={() => selectJob(job.id)}
+                className={`w-full text-left px-3 py-2.5 border-l-2 transition-colors ${verdictBorder}`}
+                style={{
+                  borderBottom: "1px solid var(--border)",
+                  background: isSelected ? "var(--surface-hi)" : "transparent",
+                }}
+                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--surface)"; }}
+                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                {/* Title */}
+                <div className="text-sm font-semibold truncate leading-tight mb-0.5"
+                  style={{ color: "var(--text-1)" }}>
+                  {job.title ?? "(no title)"}
+                </div>
+
+                {/* Company + location + source */}
+                <div className="text-xs truncate mb-2" style={{ color: "var(--text-2)" }}>
+                  {job.posted_company_name ?? "—"}
+                  {job.country ? ` · ${job.country}` : ""}
+                  {job.remote_scope ? ` · ${job.remote_scope}` : ""}
+                  {job.provider && (
+                    <span className="font-data ml-1.5" style={{ color: "var(--text-3)", fontSize: 10 }}>
+                      [{job.provider}]
+                    </span>
+                  )}
+                </div>
+
+                {/* Bottom row: verdict + scores + status */}
+                <div className="flex items-center gap-2">
+                  {job.is_scraping ? (
+                    <span className="text-xs animate-pulse" style={{ color: "var(--blue)" }}>⟳ scraping</span>
+                  ) : job.is_researching ? (
+                    <span className="text-xs animate-pulse" style={{ color: "var(--amber)" }}>⟳ researching</span>
+                  ) : job.apply_verdict ? (
+                    <span className={`text-xs font-data font-medium ${verdictColor}`}>
+                      {job.apply_verdict === "Apply with caution" ? "Caution" : job.apply_verdict}
+                    </span>
+                  ) : null}
+
+                  {job.relevance_score != null && (
+                    <span className="font-data text-xs" style={{ color: "var(--purple)" }}>R:{job.relevance_score}</span>
+                  )}
+                  {job.trustworthiness_score != null && (
+                    <span className="font-data text-xs" style={{ color: "var(--teal)" }}>T:{job.trustworthiness_score}</span>
+                  )}
+
+                  {job.current_interview_status && job.current_interview_status !== "Not Applied" && INTERVIEW_PILL[job.current_interview_status] && (
+                    <span className="font-data text-xs px-1.5 py-px rounded font-medium"
+                      style={{
+                        background: INTERVIEW_PILL[job.current_interview_status].bg,
+                        color: INTERVIEW_PILL[job.current_interview_status].color,
+                        fontSize: 10,
+                      }}>
+                      {job.current_interview_status}
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs px-1.5 py-px rounded"
+                    style={{
+                      background: "var(--surface-hi)",
+                      color: "var(--text-2)",
+                      border: "1px solid var(--border-hi)",
+                      fontSize: 10,
+                    }}>
+                    {job.status}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* RIGHT PANEL */}
+      <div className="flex-1 overflow-y-auto" style={{ background: "var(--bg)" }}>
         {selectedId ? (
           <JobDetail
             jobId={selectedId}
             key={selectedId}
             updateJobAction={updateJobAction}
             onDelete={() => {
-              setDeletedIds((prev) => new Set(prev).add(selectedId));
+              setDeletedIds(prev => new Set(prev).add(selectedId));
               setSelectedId(null);
             }}
           />
         ) : (
-          <div className="text-gray-600 text-sm mt-8 text-center">Select a job to view details</div>
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm" style={{ color: "var(--text-3)" }}>Select a job to view details</p>
+          </div>
         )}
       </div>
     </>
