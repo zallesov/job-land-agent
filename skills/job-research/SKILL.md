@@ -101,6 +101,7 @@ If any hard no-go triggers: write the fast-exit JSON below, run `db_write_resear
   "ai_native_assessment": "Not evaluated — fast exit",
   "assessment_notes": "Fast exit — no web research performed. Reason: <specific trigger that matched>",
   "research_notes": "Skipped: profile mismatch detected from job title/description in DB.",
+  "apply_url": "Not found",
   "source_urls": []
 }
 ```
@@ -127,6 +128,7 @@ Use web search tools to research the company and role. Research sources in order
 - Does the company have a real website, active LinkedIn, real product?
 - Direct employer or recruiter/agency/intermediary?
 - Any mismatch between posting company and actual employer?
+- **Apply URL**: find the direct application link on the company's own careers page or ATS. Prefer a specific job page URL over a generic `/careers` page. Set `apply_url` in the result JSON — this overwrites the listing URL stored in the DB.
 
 ### B. Company Profile
 
@@ -219,6 +221,7 @@ Produce a JSON object matching this schema **exactly**. Use only the allowed enu
   "ai_native_assessment": "string",
   "assessment_notes": "string",
   "research_notes": "string",
+  "apply_url": "https://... direct application URL or Not found",
   "source_urls": ["url1", "url2"]
 }
 ```

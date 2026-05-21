@@ -116,6 +116,13 @@ def main() -> int:
             (salary_range, args.job_id),
         )
 
+    apply_url = result.get("apply_url")
+    if apply_url and apply_url != "Not found":
+        con.execute(
+            "UPDATE jobs SET apply_url=?, updated_at=datetime('now') WHERE id=?",
+            (apply_url, args.job_id),
+        )
+
     con.execute(
         "UPDATE jobs SET status='researched', updated_at=datetime('now') WHERE id=?",
         (args.job_id,),
