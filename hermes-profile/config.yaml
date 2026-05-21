@@ -367,7 +367,7 @@ goals:
   max_turns: 20
 skills:
   external_dirs:
-  - /Users/zall/interviews/skills
+  - ../skills
   template_vars: true
   inline_shell: false
   inline_shell_timeout: 10
