@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -31,6 +33,34 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
 PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout"}
+
+
+def _queue_research(job_ids: list[int], db_path: str) -> int:
+    """Create pending research_job commands for each job that doesn't have one yet."""
+    if not job_ids:
+        return 0
+    queued = 0
+    con = sqlite3.connect(db_path)
+    try:
+        for job_id in job_ids:
+            existing = con.execute(
+                "SELECT id FROM agent_commands "
+                "WHERE command_type='research_job' AND status IN ('pending','running') "
+                "AND json_extract(payload_json,'$.job_id')=?",
+                (job_id,),
+            ).fetchone()
+            if existing:
+                continue
+            con.execute(
+                "INSERT INTO agent_commands (command_type, payload_json, status, created_by) "
+                "VALUES ('research_job', ?, 'pending', 'pipeline')",
+                (json.dumps({"job_id": job_id}),),
+            )
+            queued += 1
+        con.commit()
+    finally:
+        con.close()
+    return queued
 
 
 def run(
@@ -82,9 +112,11 @@ def run(
             sanity_failures.append((job_id, result.error or "unknown"))
 
     send_daily_digest(enrich_failures=enrich_failures, sanity_failures=sanity_failures)
+
+    queued = _queue_research(job_ids, db_path=db_path)
     print(
         f"[pipeline] done. enrich_failures={len(enrich_failures)} "
-        f"sanity_failures={len(sanity_failures)}",
+        f"sanity_failures={len(sanity_failures)} research_queued={queued}",
         flush=True,
     )
 

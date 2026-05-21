@@ -91,6 +91,77 @@ def test_enrich_failure_skips_sanity_for_that_job(db_path):
     assert (jid, "timeout") in failures
 
 
+def test_research_commands_queued_for_new_jobs(db_path):
+    mock_check_auth = MagicMock()
+    mock_scrape = MagicMock(return_value=[_job()])
+    job_ids = [10, 11]
+
+    with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job(), _job()]), \
+         patch("scripts.scraping_pipeline.ingest_jobs", return_value=job_ids), \
+         patch("scripts.scraping_pipeline.enrich_job") as mock_enrich, \
+         patch("scripts.scraping_pipeline.sanity_check_job") as mock_sanity, \
+         patch("scripts.scraping_pipeline.send_daily_digest"):
+
+        mock_enrich.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
+        mock_sanity.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
+
+        from scripts.scraping_pipeline import run
+        run(
+            provider="greenhouse", location=BERLIN,
+            cdp_url="http://localhost:9222", db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
+        )
+
+    import sqlite3, json as _json
+    con = sqlite3.connect(db_path)
+    rows = con.execute(
+        "SELECT payload_json FROM agent_commands WHERE command_type='research_job' AND status='pending'"
+    ).fetchall()
+    con.close()
+    queued_ids = {_json.loads(r[0])["job_id"] for r in rows}
+    assert queued_ids == {10, 11}
+
+
+def test_research_not_duplicated_if_already_pending(db_path):
+    import sqlite3, json as _json
+    # Pre-insert a pending research command for job 20
+    con = sqlite3.connect(db_path)
+    con.execute(
+        "INSERT INTO agent_commands (command_type, payload_json, status, created_by) "
+        "VALUES ('research_job', ?, 'pending', 'test')",
+        (_json.dumps({"job_id": 20}),),
+    )
+    con.commit()
+    con.close()
+
+    mock_check_auth = MagicMock()
+    mock_scrape = MagicMock(return_value=[_job()])
+
+    with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]), \
+         patch("scripts.scraping_pipeline.ingest_jobs", return_value=[20]), \
+         patch("scripts.scraping_pipeline.enrich_job") as mock_enrich, \
+         patch("scripts.scraping_pipeline.sanity_check_job") as mock_sanity, \
+         patch("scripts.scraping_pipeline.send_daily_digest"):
+
+        mock_enrich.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
+        mock_sanity.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
+
+        from scripts.scraping_pipeline import run
+        run(
+            provider="greenhouse", location=BERLIN,
+            cdp_url="http://localhost:9222", db_path=db_path,
+            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
+        )
+
+    con = sqlite3.connect(db_path)
+    count = con.execute(
+        "SELECT COUNT(*) FROM agent_commands WHERE command_type='research_job' "
+        "AND json_extract(payload_json,'$.job_id')=20"
+    ).fetchone()[0]
+    con.close()
+    assert count == 1  # not duplicated
+
+
 def test_titles_passed_to_scrape_jobs(db_path):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[])
