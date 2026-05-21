@@ -203,6 +203,9 @@ def ingest_run_file(db_path: str, run_file: str) -> dict:
                 if not existing["salary_range"] and n["salary_range"]:
                     set_parts.append("salary_range = ?")
                     params.append(n["salary_range"])
+                if not existing["dedup_key"]:
+                    set_parts.append("dedup_key = ?")
+                    params.append(dedup_key)
                 params.append(job_id)
                 con.execute(
                     f"UPDATE jobs SET {', '.join(set_parts)} WHERE id = ?",

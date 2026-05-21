@@ -341,7 +341,7 @@ def _known_dedup_keys(db_path: str) -> set[str]:
         import sqlite3  # noqa: PLC0415
         con = sqlite3.connect(db_path)
         try:
-            return {row[0] for row in con.execute("SELECT dedup_key FROM jobs").fetchall()}
+            return {row[0] for row in con.execute("SELECT dedup_key FROM jobs WHERE dedup_key IS NOT NULL").fetchall()}
         finally:
             con.close()
     except Exception:
