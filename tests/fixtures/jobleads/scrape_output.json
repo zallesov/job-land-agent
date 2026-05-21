@@ -1,0 +1,22 @@
+[
+  {
+    "provider": "jobleads",
+    "company": "Remote company",
+    "title": "Senior Data Platform Engineer",
+    "url": "https://www.jobleads.com/job/ebcf8e07a5c9537f1b3c2148e7d11e4c4",
+    "location": "Remote",
+    "country": "Spain",
+    "postedRelative": "3 days ago",
+    "salaryRaw": ""
+  },
+  {
+    "provider": "jobleads",
+    "company": "Fintech startup",
+    "title": "Head of Engineering",
+    "url": "https://www.jobleads.com/job/e7762c8d2b587d2ba0ee60ddae38f190e",
+    "location": "Remote, Europe",
+    "country": "Spain",
+    "postedRelative": "1 week ago",
+    "salaryRaw": ""
+  }
+]

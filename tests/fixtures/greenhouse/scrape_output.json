@@ -1,0 +1,54 @@
+[
+  {
+    "provider": "greenhouse",
+    "company": "Clarity AI",
+    "title": "Staff AI Engineer",
+    "url": "https://job-boards.eu.greenhouse.io/clarityai/jobs/4802689101?gh_src=my.greenhouse.search",
+    "description": "",
+    "applyUrl": "https://job-boards.eu.greenhouse.io/clarityai/jobs/4802689101?gh_src=my.greenhouse.search",
+    "location": "Remote",
+    "country": "Spain",
+    "postingDate": "",
+    "searchLabel": "Spain Remote",
+    "salaryRaw": ""
+  },
+  {
+    "provider": "greenhouse",
+    "company": "Zencoder",
+    "title": "Staff Software Engineer",
+    "url": "https://job-boards.greenhouse.io/zencoder/jobs/5136449007?gh_src=my.greenhouse.search",
+    "description": "",
+    "applyUrl": "https://job-boards.greenhouse.io/zencoder/jobs/5136449007?gh_src=my.greenhouse.search",
+    "location": "Europe, Remote",
+    "country": "Spain",
+    "postingDate": "",
+    "searchLabel": "Spain Remote",
+    "salaryRaw": ""
+  },
+  {
+    "provider": "greenhouse",
+    "company": "Bluefish AI",
+    "title": "Engineering Manager (Data Team)",
+    "url": "https://job-boards.greenhouse.io/bluefishai/jobs/5014115008?gh_src=my.greenhouse.search",
+    "description": "",
+    "applyUrl": "https://job-boards.greenhouse.io/bluefishai/jobs/5014115008?gh_src=my.greenhouse.search",
+    "location": "Berlin, remote in Germany",
+    "country": "Germany",
+    "postingDate": "",
+    "searchLabel": "Berlin Remote",
+    "salaryRaw": ""
+  },
+  {
+    "provider": "greenhouse",
+    "company": "Acme Corp (Sales)",
+    "title": "Sales Manager DACH",
+    "url": "https://job-boards.greenhouse.io/acme/jobs/9999999",
+    "description": "",
+    "applyUrl": "https://job-boards.greenhouse.io/acme/jobs/9999999",
+    "location": "Berlin",
+    "country": "Germany",
+    "postingDate": "",
+    "searchLabel": "Berlin Remote",
+    "salaryRaw": ""
+  }
+]
