@@ -16,15 +16,17 @@ except ImportError:  # not available in test environments
 
 
 def build_prompt(skill: str, context: dict) -> str:
-    items = list(context.items())
     parts = [f"Use skill {skill}."]
-    for i, (k, v) in enumerate(items):
-        suffix = "." if i < len(items) - 1 else ""
-        parts.append(f"{k}: {v}{suffix}")
+    for k, v in context.items():
+        parts.append(f"{k}: {v}.")
     return " ".join(parts)
 
 
 def hermes_call(skill: str, context: dict, timeout_sec: int = 300) -> HermesResult:
+    if AIAgent is None:
+        return HermesResult(
+            success=False, data={}, error="run_agent (Hermes) is not installed", raw_output=""
+        )
     prompt = build_prompt(skill, context)
     try:
         agent = AIAgent(quiet_mode=True, skip_context_files=True, max_iterations=10)

@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "hermes"
 
@@ -64,4 +63,9 @@ def test_unparseable_json(mock_cls):
 def test_build_prompt():
     from scripts.pipeline.hermes import build_prompt
     p = build_prompt("enrich-job", {"job_id": 42, "url": "https://x.com"})
-    assert p == "Use skill enrich-job. job_id: 42. url: https://x.com"
+    assert p == "Use skill enrich-job. job_id: 42. url: https://x.com."
+
+def test_build_prompt_three_keys():
+    from scripts.pipeline.hermes import build_prompt
+    p = build_prompt("enrich-job", {"job_id": 42, "url": "https://x.com", "cv_path": "/cv.md"})
+    assert p == "Use skill enrich-job. job_id: 42. url: https://x.com. cv_path: /cv.md."
