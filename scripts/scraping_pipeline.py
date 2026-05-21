@@ -34,6 +34,10 @@ DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
 PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout"}
 
+# Providers that handle all locations internally — only call run() once regardless
+# of how many locations are configured.
+LOCATION_INDEPENDENT_PROVIDERS = {"wellfound"}
+
 
 def _queue_research(job_ids: list[int], db_path: str) -> int:
     """Create pending research_job commands for each job that doesn't have one yet."""
@@ -155,7 +159,8 @@ def main() -> int:
               "or add locations to config/user.yaml.", file=sys.stderr)
         return 2
 
-    for location in locations:
+    run_locations = locations[:1] if args.provider in LOCATION_INDEPENDENT_PROVIDERS else locations
+    for location in run_locations:
         run(
             provider=args.provider,
             location=location,
