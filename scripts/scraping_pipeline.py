@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.pipeline.dedup import dedup_jobs
 from scripts.pipeline.ingest import ingest_jobs
