@@ -66,12 +66,13 @@ def _search_via_inputs(page, title: str, location: str) -> bool:
         page.keyboard.press("Escape")
         page.wait_for_timeout(300)
 
-        # Location input — click via JS to avoid chip overlay, clear, then type
+        # Location input — click via JS to avoid chip overlay, select-all to clear, then type
         page.evaluate("""() => {
             const input = document.querySelector('input[placeholder*="Anywhere"], input[placeholder*="Location"]');
-            if (input) { input.focus(); input.value = ''; input.dispatchEvent(new Event('input', {bubbles: true})); }
+            if (input) input.focus();
         }""")
         page.wait_for_timeout(300)
+        page.keyboard.press("Meta+a")   # select all existing text
         page.keyboard.type(location, delay=50)
         page.wait_for_timeout(2000)  # Wait for autocomplete dropdown
 
