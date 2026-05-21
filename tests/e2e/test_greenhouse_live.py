@@ -32,7 +32,7 @@ def test_greenhouse_pipeline_live():
     from scripts.scraping_pipeline import run
     run(
         provider="greenhouse",
-        location="berlin",
+        location={"city": "Berlin", "country": "Germany", "country_code": "DE"},
         cdp_url="http://localhost:9222",
         db_path=E2E_DB,
     )
