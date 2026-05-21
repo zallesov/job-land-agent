@@ -42,6 +42,75 @@ con.close()
 
 ---
 
+## Step 1.5: Quick Fit Check (before any web research)
+
+Read the job row from Step 1 (title + description). Read `config/user.yaml` and skim `config/cv.md`.
+
+Evaluate against these **hard no-go signals**. If ANY match → **fast exit** (go to Step 1.5 Exit, skip Step 2 entirely).
+
+### Hard no-go signals
+
+**Wrong seniority / pay grade:**
+- Title or description contains: junior, entry-level, entry level, intern, internship, trainee, apprentice, graduate program, new grad, associate (non-senior)
+- Description explicitly requires < 5 years experience
+- Salary stated and clearly below senior market (< 60K EUR/year for EU roles, < 80K USD for US roles)
+
+**Wrong role domain (non-engineering):**
+- Sales, Account Executive, Account Manager, Business Development, Marketing, Growth, HR, Recruiter, Talent Acquisition, Legal, Finance, Operations (non-technical), Customer Success, Customer Support, Product Designer, UX Designer (no engineering component)
+
+**Wrong engineering domain (not in profile):**
+- Pure mobile (iOS / Android) with no backend/AI component
+- Pure QA / Test Engineer with no engineering scope
+- Pure DevOps / SRE with no software engineering scope
+- Pure data analyst / BI analyst (no ML / AI engineering)
+- Embedded / firmware / hardware engineering
+- Pure frontend (no backend, no AI, no architecture)
+
+**Clear experience mismatch:**
+- Role clearly scoped for 1–4 year engineers (description tone, responsibilities, required skills all point to junior/mid)
+- IC role but clearly below Staff/Senior/Principal level for a 20-year profile
+
+### Step 1.5 Exit (fast-exit path)
+
+If any hard no-go triggers: write the fast-exit JSON below, run `db_write_research.py`, stop.
+
+```json
+{
+  "legitimacy_check": "unknown",
+  "hiring_entity_type": "unknown",
+  "founded_year": null,
+  "hq_location": "Not found",
+  "employee_count": "Not found",
+  "headcount_trend": "unknown",
+  "funding_summary": "Not found",
+  "funding_stage": "unknown",
+  "risk_news": "Not found",
+  "glassdoor_summary": "Not found",
+  "trustworthiness_score": 50,
+  "relevance_score": 5,
+  "apply_verdict": "Skip",
+  "one_line_summary": "Fast exit: <one-line reason why it fails the fit check>",
+  "red_flag_scan": "None found",
+  "seniority_fit": "mismatch",
+  "tech_stack_fit": "Not evaluated — fast exit",
+  "ic_or_management": "Unknown",
+  "salary_range": "Not found",
+  "salary_assessment": "Not evaluated — fast exit",
+  "remote_eligibility": "unclear",
+  "visa_contract_structure": "Not found",
+  "ai_native_assessment": "Not evaluated — fast exit",
+  "assessment_notes": "Fast exit — no web research performed. Reason: <specific trigger that matched>",
+  "research_notes": "Skipped: profile mismatch detected from job title/description in DB.",
+  "source_urls": []
+}
+```
+
+Save to `tmp/research_<job_id>.json`, then run `db_write_research.py` as in Step 3. Done — do not proceed to Step 2.
+
+If NO hard no-go signals match → proceed to Step 2.
+
+---
+
 ## Step 2: Research
 
 Use web search tools to research the company and role. Research sources in order:
