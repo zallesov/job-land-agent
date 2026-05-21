@@ -86,6 +86,7 @@ If any hard no-go triggers: write the fast-exit JSON below, run `db_write_resear
   "funding_stage": "unknown",
   "risk_news": "Not found",
   "glassdoor_summary": "Not found",
+  "clutch_summary": "Not found",
   "trustworthiness_score": 50,
   "relevance_score": 5,
   "apply_verdict": "Skip",
@@ -120,8 +121,9 @@ Use web search tools to research the company and role. Research sources in order
 2. Company website
 3. LinkedIn company page
 4. Glassdoor
-5. Crunchbase or funding source
-6. News search (last 18 months): layoffs, restructuring, leadership changes, lawsuits
+5. Clutch.co (`https://clutch.co/search?q=<company_name>`)
+6. Crunchbase or funding source
+7. News search (last 18 months): layoffs, restructuring, leadership changes, lawsuits
 
 ### A. Legitimacy Check
 
@@ -142,6 +144,7 @@ Use web search tools to research the company and role. Research sources in order
 - Glassdoor rating, review count
 - Recurring themes: management, work-life balance, layoffs, pay, engineering culture
 - CEO approval rating if available
+- Clutch.co: client reviews, rating, number of reviews, services focus — indicates real client base and delivery quality (especially useful for agencies/consultancies)
 
 ### D. Red-Flag Scan
 
@@ -206,6 +209,7 @@ Produce a JSON object matching this schema **exactly**. Use only the allowed enu
   "funding_stage": "pre-seed | seed | Series A | Series B | Series C+ | bootstrapped | public | unknown",
   "risk_news": "string or Not found",
   "glassdoor_summary": "string or Not found",
+  "clutch_summary": "string or Not found",
   "trustworthiness_score": 0,
   "relevance_score": 0,
   "apply_verdict": "Apply | Apply with caution | Skip",
@@ -255,7 +259,7 @@ When asked to research multiple jobs (2+), use `delegate_task` to parallelize co
 ### Subagent context template
 
 ```
-Research this job posting for company due diligence. Navigate the URL, then search for company info (LinkedIn, Glassdoor, Crunchbase, news — layoffs/funding/leadership last 18 months).
+Research this job posting for company due diligence. Navigate the URL, then search for company info (LinkedIn, Glassdoor, Clutch.co, Crunchbase, news — layoffs/funding/leadership last 18 months).
 
 Job URL: <url>
 Company name: <name>
@@ -339,6 +343,7 @@ When researching companies, multiple sources block headless browser IPs:
 | Source | Typical result | Fallback |
 |--------|---------------|----------|
 | Glassdoor | Cloudflare "Humans only" challenge | Write `Not found` — no reliable workaround |
+| Clutch.co | Generally accessible; search results may be JS-rendered | Use `browser_navigate` → `browser_snapshot`; if blocked, write `Not found` |
 | Crunchbase | Cloudflare "Just a moment..." challenge | Write `Not found` |
 | DuckDuckGo | "Unexpected error. Please try again." | Skip — use Bing or direct URLs |
 | Bing | CAPTCHA challenge after 2-3 queries | Use Google News RSS instead |
@@ -367,7 +372,8 @@ This returns structured news items with dates — ideal for risk scanning (layof
 3. LinkedIn company page (most reliable for employee count, industry, size)
 4. Google News RSS (reliable for risk/news scanning)
 5. Glassdoor (attempt; if blocked, mark `Not found` and continue)
-6. Crunchbase (attempt; if blocked, mark `Not found` and continue)
+6. Clutch.co `https://clutch.co/search?q=<company_name>` (attempt; if blocked, mark `Not found` and continue)
+7. Crunchbase (attempt; if blocked, mark `Not found` and continue)
 7. DuckDuckGo/Bing searches (use sparingly — rate-limited quickly)
 
 ### Silent company_research skip when company_id is null

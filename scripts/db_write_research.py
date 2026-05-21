@@ -54,9 +54,9 @@ def main() -> int:
                     legitimacy_check, hiring_entity_type, founded_year,
                     hq_location, employee_count, headcount_trend,
                     funding_summary, funding_stage, risk_news,
-                    glassdoor_summary, trustworthiness_score,
+                    glassdoor_summary, clutch_summary, trustworthiness_score,
                     research_notes, source_urls_json, raw_research_json
-                ) VALUES (?,datetime('now'),'researched',?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                ) VALUES (?,datetime('now'),'researched',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     company_id,
                     result.get("legitimacy_check"), result.get("hiring_entity_type"),
@@ -64,6 +64,7 @@ def main() -> int:
                     result.get("employee_count"), result.get("headcount_trend"),
                     result.get("funding_summary"), result.get("funding_stage"),
                     result.get("risk_news"), result.get("glassdoor_summary"),
+                    result.get("clutch_summary"),
                     result.get("trustworthiness_score"), result.get("research_notes"),
                     json.dumps(result.get("source_urls", [])), json.dumps(result),
                 ),
