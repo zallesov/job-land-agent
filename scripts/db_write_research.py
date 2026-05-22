@@ -79,10 +79,7 @@ def main() -> int:
         result.get("relevance_score"), result.get("apply_verdict"),
         result.get("one_line_summary"), result.get("red_flag_scan"),
         result.get("seniority_fit"), result.get("tech_stack_fit"),
-        result.get("ic_or_management"), result.get("salary_assessment"),
-        result.get("remote_eligibility"), result.get("visa_contract_structure"),
-        result.get("ai_native_assessment"), result.get("assessment_notes"),
-        json.dumps(result.get("source_urls", [])), json.dumps(result),
+        result.get("salary_assessment"), result.get("remote_eligibility"),
     )
     if existing_assessment:
         con.execute(
@@ -90,9 +87,7 @@ def main() -> int:
                 assessed_at=datetime('now'), assessment_status='researched',
                 relevance_score=?, apply_verdict=?, one_line_summary=?,
                 red_flag_scan=?, seniority_fit=?, tech_stack_fit=?,
-                ic_or_management=?, salary_assessment=?, remote_eligibility=?,
-                visa_contract_structure=?, ai_native_assessment=?,
-                assessment_notes=?, source_urls_json=?, raw_assessment_json=?,
+                salary_assessment=?, remote_eligibility=?,
                 updated_at=datetime('now')
             WHERE job_id=?""",
             params + (args.job_id,),
@@ -103,10 +98,8 @@ def main() -> int:
                 job_id, assessed_at, assessment_status,
                 relevance_score, apply_verdict, one_line_summary,
                 red_flag_scan, seniority_fit, tech_stack_fit,
-                ic_or_management, salary_assessment, remote_eligibility,
-                visa_contract_structure, ai_native_assessment,
-                assessment_notes, source_urls_json, raw_assessment_json
-            ) VALUES (?,datetime('now'),'researched',?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                salary_assessment, remote_eligibility
+            ) VALUES (?,datetime('now'),'researched',?,?,?,?,?,?,?,?)""",
             (args.job_id,) + params,
         )
 

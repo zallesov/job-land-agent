@@ -94,13 +94,9 @@ If any hard no-go triggers: write the fast-exit JSON below, run `db_write_resear
   "red_flag_scan": "None found",
   "seniority_fit": "mismatch",
   "tech_stack_fit": "Not evaluated — fast exit",
-  "ic_or_management": "Unknown",
   "salary_range": "Not found",
   "salary_assessment": "Not evaluated — fast exit",
   "remote_eligibility": "unclear",
-  "visa_contract_structure": "Not found",
-  "ai_native_assessment": "Not evaluated — fast exit",
-  "assessment_notes": "Fast exit — no web research performed. Reason: <specific trigger that matched>",
   "research_notes": "Skipped: profile mismatch detected from job title/description in DB.",
   "apply_url": "Not found",
   "source_urls": []
@@ -156,7 +152,7 @@ Use web search tools to research the company and role. Research sources in order
 
 ### E. Role Assessment
 
-Read the user's profile from `config/user.yaml` (cv_path, work_style, locations) before scoring. The scoring dimensions below apply generically.
+Read the user's profile from `config/user.yaml` (cv_path, work_style, locations, **user_preferences**) before scoring. The scoring dimensions below apply generically, but `user_preferences` (a free-text field) should inform judgement — e.g. "only IC roles" → IC score higher; "no startups" → early-stage or unfunded companies score lower; "no crypto" → crypto-adjacent roles get a red flag.
 
 - Seniority fit: is it a Principal/Senior IC or high-impact staff role?
 - Tech stack overlap: AI, cloud, full-stack, backend, architecture, platform, engineering leadership
@@ -212,18 +208,14 @@ Produce a JSON object matching this schema **exactly**. Use only the allowed enu
   "clutch_summary": "string or Not found",
   "trustworthiness_score": 0,
   "relevance_score": 0,
-  "apply_verdict": "Apply | Apply with caution | Skip",
+  "apply_verdict": "Strong Apply | Apply with Caution | Skip",
   "one_line_summary": "string",
   "red_flag_scan": "string or None found",
   "seniority_fit": "strong_fit | good_fit | stretch | mismatch",
   "tech_stack_fit": "string",
-  "ic_or_management": "IC | Management | Both | Unknown",
   "salary_range": "90-120K EUR | 90-120K USD | Not found",
   "salary_assessment": "string or Not found",
   "remote_eligibility": "eligible | not_eligible | unclear",
-  "visa_contract_structure": "string or Not found",
-  "ai_native_assessment": "string",
-  "assessment_notes": "string",
   "research_notes": "string",
   "apply_url": "https://... direct application URL or Not found",
   "source_urls": ["url1", "url2"]
@@ -288,7 +280,7 @@ browser:
 curl -s http://localhost:9222/json/version || echo "NOT_RUNNING"
 ```
 
-If `NOT_RUNNING`, tell the user to run `~/start-chrome.sh` first. Do not proceed with `browser_navigate` until Chrome responds.
+If `NOT_RUNNING`, tell the user to run `bash start-chrome.sh` first. Do not proceed with `browser_navigate` until Chrome responds.
 
 ### Browser Architecture: Local Headless Chromium, Not Cloud
 
