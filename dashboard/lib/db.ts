@@ -82,6 +82,7 @@ export type JobFilters = {
   remote_scope?: string;
   unresearched?: boolean;
   new_only?: boolean;
+  apply_verdict?: string;
 };
 
 export function listJobs(filters: JobFilters = {}): (Job & {
@@ -92,7 +93,10 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   is_scraping: number;
 })[] {
   const db = getDb();
-  const conditions: string[] = ["j.deleted_at IS NULL", "j.status != 'skip'"];
+  const conditions: string[] = [
+    "j.deleted_at IS NULL",
+    "(ja.apply_verdict != 'Skip' OR ja.apply_verdict IS NULL)",
+  ];
   const params: unknown[] = [];
 
   if (filters.status) { conditions.push("j.status = ?"); params.push(filters.status); }
@@ -101,6 +105,7 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   if (filters.remote_scope) { conditions.push("j.remote_scope = ?"); params.push(filters.remote_scope); }
   if (filters.unresearched) { conditions.push("ja.id IS NULL"); }
   if (filters.new_only) { conditions.push("j.status = 'new'"); }
+  if (filters.apply_verdict) { conditions.push("ja.apply_verdict = ?"); params.push(filters.apply_verdict); }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const sql = `
