@@ -3,37 +3,40 @@ import { useEffect, useState } from "react";
 import { CommandButton } from "./CommandButton";
 import { STATUS_COLORS, PROVIDER_COLORS } from "./JobList";
 
-const STATUSES = ["new","interesting","not_interested","researching","researched","draft_ready","applied","interviewing","rejected","archived"];
+const PIPELINE_STATUSES = new Set(["new","enriched","screened","researching","researched","enrich_failed","screen_failed"]);
+const STATUSES = ["interesting","draft_ready","applied","interviewing","rejected","archived"];
 const INTERVIEW_STATUSES = ["Not Applied", "Applied", "In process", "Rejected", "Offer", "Landed"];
 
 const STATUS_ACCENT: Record<string, string> = {
-  new:            "#60a5fa",
-  interesting:    "#4ade80",
-  not_interested: "#475569",
-  researching:    "#fbbf24",
-  researched:     "#c084fc",
-  draft_ready:    "#fb923c",
-  applied:        "#818cf8",
-  interviewing:   "#2dd4bf",
-  rejected:       "#f87171",
-  archived:       "#475569",
-  listed:         "#94a3b8",
-  enrich_failed:  "#ef4444",
-  sanity_failed:  "#f97316",
+  new:           "#94a3b8",
+  enriched:      "#60a5fa",
+  screened:      "#34d399",
+  researching:   "#fbbf24",
+  researched:    "#c084fc",
+  enrich_failed: "#ef4444",
+  screen_failed: "#f97316",
+  interesting:   "#4ade80",
+  draft_ready:   "#fb923c",
+  applied:       "#818cf8",
+  interviewing:  "#2dd4bf",
+  rejected:      "#f87171",
+  archived:      "#475569",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  new:            "New",
-  interesting:    "Interesting",
-  not_interested: "Not Interested",
-  researching:    "Researching",
-  researched:     "Researched",
-  draft_ready:    "Draft Ready",
-  applied:        "Applied",
-  interviewing:   "Interviewing",
-  rejected:       "Rejected",
-  archived:       "Archived",
-  listed:         "Listed",
+  new:           "New",
+  enriched:      "Enriched",
+  screened:      "Screened",
+  researching:   "Researching…",
+  researched:    "Researched",
+  enrich_failed: "Enrich Failed",
+  screen_failed: "Screen Failed",
+  interesting:   "Interesting",
+  draft_ready:   "Draft Ready",
+  applied:       "Applied",
+  interviewing:  "Interviewing",
+  rejected:      "Rejected",
+  archived:      "Archived",
 };
 
 const INTERVIEW_COLORS: Record<string, { bg: string; color: string }> = {
@@ -45,11 +48,12 @@ const INTERVIEW_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 const VERDICT_CONFIG: Record<string, { bg: string; accent: string; label: string; labelColor: string }> = {
-  "Apply":             { bg: "var(--green-bg)",  accent: "var(--green)",        label: "APPLY",             labelColor: "var(--green)" },
-  "Apply with caution":{ bg: "var(--amber-bg)",  accent: "var(--amber)",        label: "APPLY WITH CAUTION",labelColor: "var(--amber)" },
-  "Skip":              { bg: "var(--red-bg)",    accent: "var(--red-border)",   label: "SKIP",              labelColor: "var(--text-2)" },
+  "Strong Apply":       { bg: "var(--green-bg)",  accent: "var(--green)",        label: "STRONG APPLY",       labelColor: "var(--green)" },
+  "Apply with Caution": { bg: "var(--amber-bg)",  accent: "var(--amber)",        label: "APPLY WITH CAUTION", labelColor: "var(--amber)" },
+  "Need Research":      { bg: "rgba(96,165,250,0.10)", accent: "#60a5fa",        label: "NEED RESEARCH",      labelColor: "#60a5fa" },
+  "Skip":               { bg: "var(--red-bg)",    accent: "var(--red-border)",   label: "SKIP",               labelColor: "var(--text-2)" },
 };
-const DEFAULT_VERDICT = { bg: "var(--surface)", accent: "var(--border-hi)", label: "NOT RESEARCHED", labelColor: "var(--text-3)" };
+const DEFAULT_VERDICT = { bg: "var(--surface)", accent: "var(--border-hi)", label: "NOT SCREENED", labelColor: "var(--text-3)" };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -178,7 +182,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
     }
   }
 
-  const canApply = assessment?.apply_verdict === "Apply" || assessment?.apply_verdict === "Apply with caution";
+  const canApply = assessment?.apply_verdict === "Strong Apply" || assessment?.apply_verdict === "Apply with Caution";
 
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 48 }}>
@@ -224,7 +228,9 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
           </a>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          <CommandButton jobId={jobId} commands={commands ?? []} onDone={load} compact />
+          {(job.status === "screened" || job.status === "researched") && (
+            <CommandButton jobId={jobId} commands={commands ?? []} onDone={load} compact />
+          )}
           {canApply && (
             <button onClick={handleApply} disabled={applying}
               className="font-data text-xs font-medium rounded px-3 py-1 transition-colors disabled:opacity-40"
@@ -301,7 +307,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
         <div style={{ padding: "12px 20px", borderRight: "1px solid var(--border)" }}>
           <FieldLabel>Workflow Status</FieldLabel>
           <select
-            value={currentStatus}
+            value={PIPELINE_STATUSES.has(currentStatus) ? "" : currentStatus}
             onChange={e => handleStatusChange(e.target.value)}
             className="text-xs rounded outline-none transition-colors"
             style={{
@@ -321,6 +327,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
               backgroundPosition: "right 0 center",
               paddingRight: 14,
             }}>
+            <option value="" disabled>— pipeline stage —</option>
             {STATUSES.map(s => (
               <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
             ))}
@@ -449,24 +456,6 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
         </div>
       )}
 
-      {/* ── ZONE 6: Assessment notes ── */}
-      {(assessment?.assessment_notes || assessment?.ai_native_assessment) && (
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
-          <SectionLabel>Assessment</SectionLabel>
-          {assessment?.assessment_notes && (
-            <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--text-1)" }}>
-              {assessment.assessment_notes}
-            </p>
-          )}
-          {assessment?.ai_native_assessment && (
-            <div className="flex gap-2 text-xs items-baseline">
-              <span className="font-medium shrink-0" style={{ color: "var(--text-3)" }}>AI-native</span>
-              <span style={{ color: "var(--text-2)" }}>{assessment.ai_native_assessment}</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── ZONE 7: Role Fit + Company Intel ── */}
       {(assessment || research) && (
         <div style={{ borderBottom: "1px solid var(--border)" }}>
@@ -475,11 +464,9 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
               <SectionLabel>Role Fit</SectionLabel>
               <div className="space-y-2">
                 <Row label="Seniority"  value={assessment?.seniority_fit} />
-                <Row label="IC / Mgmt"  value={assessment?.ic_or_management} />
                 <Row label="Tech stack" value={assessment?.tech_stack_fit} />
                 <Row label="Remote"     value={assessment?.remote_eligibility} />
                 <Row label="Salary"     value={assessment?.salary_assessment} />
-                <Row label="Visa"       value={assessment?.visa_contract_structure} />
               </div>
             </div>
             <div style={{ padding: "20px 24px" }}>
