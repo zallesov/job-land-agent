@@ -45,7 +45,7 @@ SCHEMA_DESCRIPTION = """{
   "glassdoor_summary": "string",
   "trustworthiness_score": integer_0_to_100,
   "relevance_score": integer_0_to_100,
-  "apply_verdict": "Apply | Apply with caution | Skip",
+  "apply_verdict": "Strong Apply | Apply with Caution | Skip",
   "one_line_summary": "string",
   "red_flag_scan": "string",
   "seniority_fit": "string",
@@ -106,6 +106,12 @@ Remote: {job['remote_scope'] or 'Unknown'}
 Description (first 3000 chars):
 {(job['description'] or '')[:3000]}
 """
+
+    con.execute(
+        "UPDATE jobs SET status='researching', updated_at=datetime('now') WHERE id=?",
+        (job_id,)
+    )
+    con.commit()
 
     client = anthropic.Anthropic()
     try:
@@ -177,10 +183,7 @@ Description (first 3000 chars):
         result.get("relevance_score"), result.get("apply_verdict"),
         result.get("one_line_summary"), result.get("red_flag_scan"),
         result.get("seniority_fit"), result.get("tech_stack_fit"),
-        result.get("ic_or_management"), result.get("salary_assessment"),
-        result.get("remote_eligibility"), result.get("visa_contract_structure"),
-        result.get("ai_native_assessment"), result.get("assessment_notes"),
-        json.dumps(result.get("source_urls", [])), json.dumps(result),
+        result.get("salary_assessment"), result.get("remote_eligibility"),
     )
     if existing_assessment:
         con.execute("""
@@ -188,9 +191,7 @@ Description (first 3000 chars):
                 assessed_at=datetime('now'), assessment_status='researched',
                 relevance_score=?, apply_verdict=?, one_line_summary=?,
                 red_flag_scan=?, seniority_fit=?, tech_stack_fit=?,
-                ic_or_management=?, salary_assessment=?, remote_eligibility=?,
-                visa_contract_structure=?, ai_native_assessment=?,
-                assessment_notes=?, source_urls_json=?, raw_assessment_json=?,
+                salary_assessment=?, remote_eligibility=?,
                 updated_at=datetime('now')
             WHERE job_id=?
         """, assessment_params + (job_id,))
@@ -200,10 +201,8 @@ Description (first 3000 chars):
                 job_id, assessed_at, assessment_status,
                 relevance_score, apply_verdict, one_line_summary,
                 red_flag_scan, seniority_fit, tech_stack_fit,
-                ic_or_management, salary_assessment, remote_eligibility,
-                visa_contract_structure, ai_native_assessment,
-                assessment_notes, source_urls_json, raw_assessment_json
-            ) VALUES (?,datetime('now'),'researched',?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                salary_assessment, remote_eligibility
+            ) VALUES (?,datetime('now'),'researched',?,?,?,?,?,?,?,?)
         """, (job_id,) + assessment_params)
 
     con.execute(
