@@ -35,6 +35,7 @@ providers:
   jobleads: true
   wellfound: true
   sprout: false
+  hirify: false
 
 # SQLite database path (relative to repo root)
 db_path: "jobs.db"

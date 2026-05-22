@@ -115,6 +115,22 @@ workflow:
             notify_telegram: true
             retry: false
 
+        # ── Hirify ───────────────────────────────────────────────
+        - id: hirify
+          enabled: false
+          scraper:
+            type: pipeline_provider
+            script: scripts/scraping_pipeline.py
+            command: >
+              python3 scripts/scraping_pipeline.py
+              --provider hirify
+            timeout_seconds: 900
+            artifact_pattern: "outputs/hirify/runs/hirify_jobs_live_YYYY-MM-DD.json"
+          error_handling:
+            on_failure: skip_provider
+            notify_telegram: true
+            retry: false
+
         # ── LinkedIn (future) ──────────────────────────────────────
         - id: linkedin
           enabled: false

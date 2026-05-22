@@ -1,9 +1,13 @@
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 from scripts.providers.hirify.scrape_jobs import (
     HIRIFY_BASE,
     _canonical_url,
     _normalize_raw_job,
 )
-from unittest.mock import MagicMock, patch
+
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_canonical_url_resolves_relative_hirify_links():
@@ -132,3 +136,16 @@ def test_hirify_auth_page_detection():
     assert _is_auth_page("https://hirify.me/?modal=login")
     assert _is_auth_page("https://accounts.google.com/o/oauth2/v2/auth")
     assert not _is_auth_page("https://hirify.me/")
+
+
+def test_hirify_references_are_present_in_static_integration_files():
+    expected = {
+        "config/user.yaml.example": "hirify:",
+        "skills/onboarding/SKILL.md": "Hirify",
+        "skills/run-scraping-pipeline/SKILL.md": "hirify",
+        "README.md": "Hirify",
+        "dashboard/app/components/JobList.tsx": "hirify:",
+    }
+
+    for rel_path, needle in expected.items():
+        assert needle in (ROOT / rel_path).read_text()

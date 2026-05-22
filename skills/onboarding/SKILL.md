@@ -24,7 +24,7 @@ Say:
 > Welcome to **JobLandAgent**! 👋
 >
 > I'm your autonomous job search assistant. Here's what I do:
-> 1. **Scrape** job boards (Greenhouse, JobLeads, Wellfound, Sprout) on schedule
+> 1. **Scrape** job boards (Greenhouse, JobLeads, Wellfound, Sprout, Hirify) on schedule
 > 2. **Enrich** each listing: extract salary, apply URL, full description
 > 3. **Sanity-check** postings against your CV — filter out mismatches
 > 4. **Research** promising companies: funding, Glassdoor, red flags, fit score
@@ -147,6 +147,7 @@ Ask:
 > - **JobLeads** (jobleads.com) — aggregator with salary filters
 > - **Wellfound** (wellfound.com) — startup-focused
 > - **Sprout** (usesprout.com) — EU-focused
+> - **Hirify** (hirify.me) — saved-filter based IT and Digital aggregator
 
 If a user hasn't signed up for a board, show the signup URL and suggest they sign up.
 
@@ -180,6 +181,7 @@ providers:
   jobleads: false
   wellfound: false
   sprout: false
+  hirify: false
 db_path: jobs.db
 ```
 

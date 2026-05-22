@@ -46,6 +46,7 @@ export const PROVIDER_COLORS: Record<string, { bg: string; color: string }> = {
   jobleads:   { bg: "rgba(251,146,60,0.13)",  color: "#fb923c" },
   wellfound:  { bg: "rgba(167,139,250,0.13)", color: "#a78bfa" },
   sprout:     { bg: "rgba(45,212,191,0.13)",  color: "#2dd4bf" },
+  hirify:     { bg: "rgba(56,189,248,0.13)",  color: "#38bdf8" },
 };
 
 const STATUS_PRIORITY: Record<string, number> = {
