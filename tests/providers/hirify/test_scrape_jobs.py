@@ -124,3 +124,11 @@ def test_scrape_jobs_dedups_across_filters_and_ignores_titles():
     assert len(jobs) == 1
     assert jobs[0].title == "Backend Engineer"
     page.goto.assert_called_once_with(mod.HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
+
+
+def test_hirify_auth_page_detection():
+    from scripts.providers.hirify.check_auth import _is_auth_page
+
+    assert _is_auth_page("https://hirify.me/?modal=login")
+    assert _is_auth_page("https://accounts.google.com/o/oauth2/v2/auth")
+    assert not _is_auth_page("https://hirify.me/")
