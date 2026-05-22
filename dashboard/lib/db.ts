@@ -115,12 +115,12 @@ export function listJobs(filters: JobFilters = {}): (Job & {
     LEFT JOIN (
       SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
       FROM agent_commands
-      WHERE command_type = 'research_job' AND status IN ('pending', 'running')
+      WHERE command_type = 'research_job' AND status IN ('pending', 'running') AND json_valid(payload_json)
     ) rc ON rc.job_id = j.id
     LEFT JOIN (
       SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
       FROM agent_commands
-      WHERE command_type = 'scrape_job' AND status IN ('pending', 'running')
+      WHERE command_type = 'scrape_job' AND status IN ('pending', 'running') AND json_valid(payload_json)
     ) sc ON sc.job_id = j.id
     ${where}
     ORDER BY
@@ -148,7 +148,7 @@ export function getJobDetail(id: number): {
     ? db.prepare("SELECT * FROM company_research WHERE company_id = ?").get(job.company_id) as CompanyResearch | null
     : null;
   const commands = db.prepare(
-    "SELECT * FROM agent_commands WHERE json_extract(payload_json, '$.job_id') = ? ORDER BY created_at DESC LIMIT 10"
+    "SELECT * FROM agent_commands WHERE json_valid(payload_json) AND json_extract(payload_json, '$.job_id') = ? ORDER BY created_at DESC LIMIT 10"
   ).all(id) as AgentCommand[];
   return { job, assessment, research, commands };
 }

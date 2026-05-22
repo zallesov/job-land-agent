@@ -496,10 +496,10 @@ def _run_location(page, searches: list[dict], output_file: Path, today: str) -> 
     all_rows = relevant_rows + skip_rows
     output_file.write_text(json.dumps(all_rows, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({
-        "out": str(output_file), "count": len(final_rows),
-        "dropped": rows_before - len(final_rows),
-        "countries": sorted({r.get("country", "") for r in final_rows}),
-        "missing_descriptions": sum(1 for r in final_rows if not r.get("description")),
+        "out": str(output_file), "count": len(relevant_rows),
+        "skipped": len(skip_rows),
+        "countries": sorted({r.get("country", "") for r in relevant_rows}),
+        "missing_descriptions": sum(1 for r in relevant_rows if not r.get("description")),
     }, indent=2), flush=True)
 
 

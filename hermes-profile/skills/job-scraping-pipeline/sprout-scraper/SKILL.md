@@ -17,11 +17,13 @@ cd /Users/zall/interviews && python3 scripts/scrape_sprout.py
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--location <preset>` | required | `berlin` or `spain` |
-| `--titles <str...>` | SWE, AI Eng, EM | Job titles to search (one search per title) |
+| *(none required)* | — | Locations and titles read from `config/user.yaml` automatically |
+| `--titles <str...>` | config `search_terms` | Override: job titles to search (one search per title) |
 | `--cdp-url <url>` | `http://localhost:9222` | CDP endpoint |
 | `--date <YYYY-MM-DD>` | today | Output filename date stamp |
 | `--max-jobs <N>` | 0 (all) | Limit total jobs across all searches |
+
+Locations are resolved from `config/user.yaml` → `locations[]` → `country_code` (DE → berlin, ES → spain).
 
 ## Output
 
@@ -35,10 +37,26 @@ Sprout displays jobs in a board view (`/jobs?view=board`). Each card shows compa
 
 1. **Connect** — `connect_over_cdp` to local Chrome
 2. **Navigate** — load `/jobs?view=board`
-3. **Search** — for each title: type in search bar, click Search, wait for results
-4. **Collect** — enumerate cards, click each, click "View Original", capture URL, go back
-5. **Dedup** — by original URL (cross-search dedup)
-6. **Output** — JSON per location
+3. **Set work location filter** — reads `config/user.yaml` → `work_style.preferred` (remote/hybrid/onsite), opens the Filters dropdown, expands Work Location, sets the correct checkbox (Remote/Hybrid/In Person), unchecks the other two, unchecks "Include unknown work location" for exact-match-only results. Uses the same pattern as Greenhouse's `set_work_type_on_page()`.
+4. **Search** — for each title: type in search bar, click Search, wait for results
+5. **Collect** — enumerate cards, click each, click "View Original", capture URL, go back
+6. **Dedup** — by original URL (cross-search dedup)
+7. **Output** — JSON per location
+
+### Work Location Filter Selectors
+
+The Filters dropdown uses a Radix UI dropdown menu. Key selectors:
+
+```
+Filters button:  button[data-slot="dropdown-menu-trigger"]:has-text("Filters")
+Work Location:   [role="menuitem"]:has-text("Work Location")
+Checkboxes:      [role="menuitemcheckbox"]:has-text("Remote")
+                 [role="menuitemcheckbox"]:has-text("Hybrid")
+                 [role="menuitemcheckbox"]:has-text("In Person")
+Unknown toggle:  [role="menuitemcheckbox"]:has-text("Include unknown work location")
+```
+
+Checkbox state is read via `aria-checked` attribute. Toggle only when current state differs from desired state. Always close dropdown with `Escape` when done.
 
 ## Dedup Strategy
 
@@ -126,9 +144,21 @@ After typing a job title, Sprout renders a chip/tag (e.g., `"AI Engineer"`) that
 
 **Fix:** Use JS `focus()` instead of Playwright `click()` to focus the input (see pitfall 4 above).
 
-### 6. Board view loads all results at once
+### 7. Experience/Seniority filter silently blocks non-Executive roles
 
-Unlike WellFound's infinite scroll, Sprout's board view loads all matching jobs on initial search. Scrolling doesn't add new cards. ~21 cards per search term.
+Sprout's Filters dropdown has an \"Experience\" section (shows as `menuitem \"Experience N\"` where N is the number of active experience-level filters). If any level is checked (e.g., \"Executive\"), the board ONLY shows jobs at that level — blocking Staff, Principal, Senior, and individual-contributor roles that Zall wants.
+
+**Symptom:** \"Staff Software Engineer\" search returns 2-4 cards instead of 10+, \"AI Engineer\" returns only C-suite/VP roles with \"Director\" or \"Head of\" in the title.
+
+**Fix:** The scraper does NOT programmatically control this filter (it relies on browser session state). The user must open the Filters dropdown in their Chrome, expand \"Experience\", and ensure NO experience levels are checked (or at minimum that \"Executive\" is unchecked). Then re-scrape.
+
+**Detection:** Compare the previous run's card counts. If \"AI Engineer\" dropped from ~14 to ~8 cards between runs with no other changes, check the Experience filter.
+
+### 8. Dedup pre-check skips already-ingested cards
+
+Before scraping, the script queries `jobs.db` for existing Sprout job URLs and prints `[dedup] N jobs already in DB — will skip matching cards`. Cards whose original URL matches an already-ingested job are still listed during collection but will not be re-enriched or re-added. This makes re-runs much faster (only new jobs get the expensive click-enrich cycle).
+
+The dedup is URL-based — if the same job appears under a different ATS URL across runs, it will be treated as new. This is rare but possible when companies migrate ATS platforms.
 
 ## Success Check
 

@@ -1,16 +1,15 @@
 ---
 name: run-scraping-pipeline
-description: Run job scraping for one or all active providers × one or all configured locations. Reads config/user.yaml for providers, locations, search_terms. Triggered by "run scraping", "scrape jobs", "run pipeline for greenhouse berlin", etc.
+description: Run job scraping for one or all active providers. Reads config/user.yaml for providers, locations, search_terms. Triggered by "run scraping", "scrape jobs", "run wellfound", etc.
 ---
 
 # Run Scraping Pipeline
 
 ## Trigger
 
-- "run scraping" / "scrape jobs" → all active providers × all locations
-- "run greenhouse berlin" / "run pipeline for greenhouse berlin" → greenhouse × berlin only
-- "run all scrapers for spain" / "scrape jobs in spain" → all active providers × spain
-- "run wellfound" → wellfound × all locations
+- "run scraping" / "scrape jobs" → all active providers
+- "run wellfound" → wellfound only
+- "run greenhouse" / "run pipeline for greenhouse" → greenhouse only
 
 ## Execution Rules
 
@@ -18,10 +17,18 @@ description: Run job scraping for one or all active providers × one or all conf
 - On `AuthError`: stop that provider/location combo, tell user to run `/check-auth` first.
 - Report per run: scraped count / new after dedup / ingested / failures.
 
+## Step 0: Prerequisites
+
+Ensure `pyyaml` is installed:
+
+```bash
+python3 -c "import yaml" 2>/dev/null || pip3 install pyyaml
+```
+
 ## Step 1: Chrome pre-flight check
 
 ```bash
-curl -s http://localhost:9222/json/version | python3 -c "import sys,json; d=json.load(sys.stdin); print('OK')" 2>/dev/null || echo "NOT_RUNNING"
+curl -s http://localhost:9222/json/version 2>&1 | head -1 | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
 ```
 
 If `NOT_RUNNING`: tell user to run `~/start-chrome.sh` first. Do not proceed.
@@ -34,8 +41,7 @@ import yaml, json
 d = yaml.safe_load(open('config/user.yaml'))
 active_providers = [p for p, enabled in d['providers'].items() if enabled]
 locations = [loc['city'] for loc in d['locations']]
-titles = ','.join(d.get('search_terms', []))
-print(json.dumps({'providers': active_providers, 'locations': locations, 'titles': titles}))
+print(json.dumps({'providers': active_providers, 'locations': locations}))
 "
 ```
 
@@ -43,21 +49,22 @@ print(json.dumps({'providers': active_providers, 'locations': locations, 'titles
 
 Apply any overrides from the user's request:
 - Specific provider mentioned → use only that provider (if active)
-- Specific location/city mentioned → use only that location
-- "all" → use all active providers × all locations
+- "all" → use all active providers
 
-## Step 4: Run pipeline for each (provider, location) combination
-
-For each combination:
+## Step 4: Run each provider's scraper, then ingest
 
 ```bash
-python3 scripts/scraping_pipeline.py \
-  --provider <provider> \
-  --location <city> \
-  --titles "<comma-separated search_terms>"
+# For each active provider, run its scraper (reads config automatically):
+python3 scripts/scrape_greenhouse.py
+python3 scripts/scrape_jobleads.py
+python3 scripts/scrape_wellfound.py
+python3 scripts/scrape_sprout.py
+
+# After all scrapers finish, ingest all outputs:
+python3 scripts/ingest_provider_outputs.py --db jobs.db --all-latest
 ```
 
-Capture stdout. Parse `[pipeline]` log lines for counts.
+Skip scraper scripts for inactive providers. Capture stdout. Parse log lines for counts.
 
 ## Step 5: Report results
 
@@ -71,19 +78,51 @@ Scraping complete:
 Total: N new jobs added. Dashboard: http://localhost:3000
 ```
 
-## On AuthError
+## Pitfalls & Known Issues
 
-If a run exits with `AuthError`:
+### Greenhouse "For You" feed returns 0 jobs
 
-> Session expired for <provider>. Run `/check-auth` to verify and re-login, then try scraping again.
+The Greenhouse scraper reads from the personalized "For You" feed at my.greenhouse.io. If the user hasn't set job preferences (titles, locations, remote filter) on their Greenhouse profile, the feed will be empty and the scraper will return 0 jobs. Tell the user to go to https://my.greenhouse.io and configure their job preferences, then re-scrape.
 
-Stop that provider's runs but continue with others.
+### JobLeads auth check may pass but scraping still fails
+
+The `check_auth.py` script verifies the session cookie is present, but JobLeads has two silent-auth-failure modes that bypass the URL-based `is_auth_page()` check:
+
+1. **Stale session** — the cookie exists but is expired. The scraper will exit with code 10 if the page redirects to a login URL.
+
+2. **Anonymous mode** (MORE COMMON) — the session loads job search results normally, the page URL never shows a login wall, BUT every company name is hidden as "Solo para miembros registrados" and all salary data is generic. The scraper's `is_unauthenticated()` content-based check catches this by scanning for that exact phrase. Without this check, irrelevant jobs (Tax Advisor, sales roles, etc.) get scraped and ingested silently.
+
+Both modes exit with code 10. Tell the user to log in at https://www.jobleads.com/login in Chrome, then re-scrape.
+
+**Recovery after an unauthenticated scrape:** if bad jobs were already ingested, delete them before re-scraping:
+```bash
+python3 -c "import sqlite3; db=sqlite3.connect('jobs.db'); db.execute(\"DELETE FROM jobs WHERE provider='jobleads'\"); db.commit(); print(f'Deleted')"
+```
+
+### Timeout risk with many provider × location combos
+
+Running all combos in a single execute_code script will hit the 300s timeout when there are 6+ combos. For 4+ combos, run them as individual foreground `terminal()` calls (one per combo). For 8+ combos, consider using `terminal(background=true, notify_on_complete=true)` and polling with `process()`.
+
+### Ingest script has no `--provider` flag — use `--run-file` for single-provider ingest
+
+The `ingest_provider_outputs.py` script does not support `--provider <name>`. When scraping a single provider, avoid `--all-latest` (which ingests ALL providers' latest output files, including stale runs from other providers). Instead, pass the specific output files:
+
+```bash
+python3 scripts/ingest_provider_outputs.py --db jobs.db \
+  --run-file outputs/greenhouse/runs/greenhouse_jobs_live_<date>_berlin.json \
+  --run-file outputs/greenhouse/runs/greenhouse_jobs_live_<date>_spain.json
+```
+
+Note: the script only accepts ONE `--run-file` per invocation. Run it once per output file if you have multiple location files for the same provider. The second run will update the already-inserted rows rather than creating duplicates.
+
+### Sequential scraping is slow but reliable
+
+Each provider/location combo takes 15–90 seconds. The pipeline scripts use the same Chrome instance (CDP port 9222), so running multiple simultaneously may cause contention. Prefer sequential execution unless the user specifically requests parallel.
 
 ## Examples
 
 ```
-"run scraping"                → all active providers × all configured locations
-"run greenhouse berlin"       → greenhouse × Berlin only
-"run all scrapers for spain"  → all active providers × Spain
-"run wellfound"               → wellfound × all configured locations
+"run scraping"        → all active providers (locations read from config)
+"run greenhouse"      → greenhouse scraper only
+"run wellfound"       → wellfound scraper only
 ```

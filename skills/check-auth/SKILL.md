@@ -16,6 +16,12 @@ Run when: "check auth", "re-authenticate", "check my sessions", `/check-auth`, o
 - For providers needing login: give exact instructions for the user to log in via the Chrome window, then suggest re-running this skill.
 - Can be run at any time — safe to run repeatedly.
 
+## Step 0: Prerequisites
+
+```bash
+python3 -c "import yaml" 2>/dev/null || pip3 install pyyaml
+```
+
 ## Step 1: Read active providers
 
 ```bash
@@ -60,12 +66,22 @@ Provider login URLs:
 - **Wellfound:** https://wellfound.com/login
 - **Sprout:** https://app.usesprout.com/login
 
+## Pitfall: JobLeads false positive
+
+JobLeads `check_auth.py` only verifies the session cookie is present — it cannot detect two silent-auth-failure modes:
+
+1. **Stale session** — cookie exists but is expired. The scraper's URL-based `is_auth_page()` catches redirects to login URLs.
+
+2. **Anonymous mode** — the session loads results normally but every company name shows as "Solo para miembros registrados". The scraper's `is_unauthenticated()` content-based check catches this. This mode is invisible to cookie-only checks because the session looks valid but lacks the authenticated user's profile data.
+
+Both modes cause `check-auth` to report ✅ but the scraper will exit with code 10. If scraping fails for JobLeads despite a passing auth check, have the user re-login at https://www.jobleads.com/login and re-run. See `references/jobleads-auth.md` for full detection patterns.
+
 ## Chrome Pre-Flight
 
 Before running any check_auth:
 
 ```bash
-curl -s http://localhost:9222/json/version | python3 -c "import sys,json; d=json.load(sys.stdin); print('Chrome OK:', d.get('Browser','unknown'))" 2>/dev/null || echo "NOT_RUNNING"
+curl -s http://localhost:9222/json/version 2>&1 | head -1 | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
 ```
 
 If `NOT_RUNNING`: tell user to run `~/start-chrome.sh` first.

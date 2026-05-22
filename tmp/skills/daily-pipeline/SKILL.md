@@ -29,6 +29,17 @@ print(run_id)
 " > /tmp/hermes_pipeline_run_id.txt
 ```
 
+### Step 1.5: Auth Gate (Greenhouse)
+
+Verify the Greenhouse session is alive before scraping. This saves time — if the session expired, both scrapers will fail.
+
+```bash
+# Quick CDP check: navigate to dashboard, confirm "Welcome back" is visible.
+# If redirected to /users/sign_in, abort and ask user to re-auth at https://my.greenhouse.io
+```
+
+Use `my.greenhouse.io` (candidate portal), NOT `app.greenhouse.io` (employer portal). See `greenhouse-scraper` skill for full auth check procedure.
+
 ### Step 2: Scrape Greenhouse
 
 Use the `greenhouse-daily-export` skill to scrape and save:

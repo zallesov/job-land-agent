@@ -48,6 +48,14 @@ curl -s http://localhost:9222/json/version || echo "NOT_RUNNING"
 
 If not running: user runs `~/start-chrome.sh`.
 
+## Auth Check
+
+Before scraping, verify the Greenhouse session is still valid. The candidate portal is **`my.greenhouse.io`** — do NOT use `app.greenhouse.io` (that's the employer/recruiter portal).
+
+Navigate to `https://my.greenhouse.io/dashboard` in the CDP-attached Chrome. If you see "Welcome back" with the user's name, the session is live. If redirected to `/users/sign_in`, the session has expired — ask the user to sign in at `https://my.greenhouse.io` in their visible Chrome window.
+
+The `--wait-auth` flag on the scraper script pauses for manual login if the session is expired. Use it when the auth check fails and the user is signing in simultaneously.
+
 ## Example Invocations
 
 ```bash

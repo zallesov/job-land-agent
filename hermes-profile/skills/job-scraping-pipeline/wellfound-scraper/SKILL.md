@@ -17,32 +17,35 @@ cd /Users/zall/interviews && python3 scripts/scrape_wellfound.py
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--location <preset>` | required | `berlin` or `spain` |
+| *(none required)* | — | Locations, titles, and work style read from `config/user.yaml` automatically |
 | `--cdp-url <url>` | `http://localhost:9222` | CDP endpoint |
 | `--date <YYYY-MM-DD>` | today | Output filename date stamp |
 | `--skip-enrich` | off | Skip detail page visits (faster, no descriptions) |
 | `--max-jobs <N>` | 0 (all) | Limit jobs scraped |
 | `--no-filters` | off | Skip all UI filter application |
-| `--remote-only` | on | Toggle remote-only filter |
-| `--min-salary <N>` | 100000 | Minimum salary in USD |
-| `--full-time` | on | Toggle full-time filter |
+
+**Location logic (config-driven, no CLI flag):** When `work_style.preferred` is `"remote"`, the scraper runs a single \"Europe\" search (broad remote region, no city picker needed). When non-remote, it iterates the cities from `config/user.yaml` → `locations[]` → `country_code` (DE → Berlin, ES → Spain). Filters (Remote, Full-Time, $100k+ salary) are applied via URL params and UI toggles.
 
 ## Output
 
 ```
-outputs/wellfound/runs/wellfound_jobs_live_<date>_<location_slug>.json
+outputs/wellfound/runs/wellfound_jobs_live_<date>_<slug>.json
 ```
+
+For remote mode: slug is `europe`. For non-remote: slug is `berlin` or `spain` (from config location keys).
 
 Each job object: `provider`, `company`, `title`, `url`, `applyUrl`, `description`, `location`, `country`, `postingDate`, `salaryRaw`, `equityRaw`, `skills`.
 
-## How It Works (5 Phases)
+## How It Works (6 Phases)
 
 1. **Connect** — `connect_over_cdp` to local Chrome, create fresh page
-2. **Load** — navigate to `/jobs`, saved search auto-loads (roles + location from Chrome profile)
-3. **Filter** — apply Remote/Full-Time/Salary toggles (skipped if `--no-filters`)
-4. **Scroll** — infinite scroll to load all results (up to 40 iterations, stops after 4 stale scrolls)
-5. **Collect** — extract job cards from DOM via `page.evaluate`
-6. **Enrich** — visit each job detail page for full description + skills (skipped if `--skip-enrich`)
+2. **Navigate** — `wellfound.com/jobs?role=<title>&salary_min=100000&remote=true`, one page per search term
+3. **Filter** — apply Remote/Full-Time/Salary UI toggles (skipped if `--no-filters`). Falls back to URL params when toggle buttons are disabled (saved-search state).
+4. **Set location** — for remote mode (config `work_style.preferred: remote`): \"Europe\". For non-remote: specific city from config. Uses text-match click on location pill. If location change fails, continues with existing saved-search location (non-fatal warning).
+5. **Scroll** — infinite scroll to load all results (up to 25 iterations, stops after 4 stale scrolls). First search scrolls ~360 jobs; subsequent search terms typically find 0 new (dedup happens inline).
+6. **Collect** — extract job cards from DOM via `page.evaluate`, dedup by URL across searches.
+7. **Filter** — `is_relevant()` title-based filter separates jobs into relevant + skip lists.
+8. **Enrich** — visit each relevant job's detail page for full description + skills + salary (skipped if `--skip-enrich`).
 
 ## Session Persistence Model (IMPORTANT)
 
@@ -99,6 +102,18 @@ Playwright uses `input` or `[role="textbox"]`, not `textbox`. Using `textbox` ca
 ### 9. React SPAs may need JS click() instead of Playwright click()
 When a button that should navigate or open a popup does nothing on `locator.click()`, try `page.evaluate()` with native `element.click()`. Playwright's synthetic click doesn't always trigger React event handlers. This applies to WellFound, Sprout, and any React-based ATS.
 
+### 10. Enrichment failures leave missing descriptions — targeted retry
+
+When enrichment fails (page load timeout, SPA navigation, ATS redirect), the job is still in the output file but with an empty `description` field. Running the full scraper again is wasteful (re-scrolls 360+ cards). Instead, use a targeted enrichment-only script that queries `jobs.db` for wellfound jobs with empty descriptions and visits only their URLs:
+
+```bash
+python3 tmp/enrich_missing_wellfound.py
+```
+
+This connects to the same CDP Chrome, visits each un-enriched URL, runs the same JS extraction as `enrich_wellfound_job()`, and updates `jobs.db` directly. It skips the scrape → scroll → collect phases entirely. Typically enriches 40-150 jobs in a single pass.
+
+If enrichment fails in the script too (0 enriched / all failed), check the DB column name — the script uses `salary_range` (not `salary_raw`). The scraper's original enrichment writes to the in-memory dict; the retry script writes to the DB column directly.
+
 ## Playwright MCP (Alternative for Interactive Use)
 
 For manual inspection or one-off searches, Playwright MCP wired to the same CDP endpoint works:
@@ -124,7 +139,12 @@ Exit code 0. Stdout contains JSON with `count` > 0. Output file is valid JSON ar
 
 ## Known Locations
 
-| Preset   | Search Query       |
+For **remote** mode (`work_style.preferred: remote`): the scraper uses a single `"Europe"` search — no city-specific runs. All results are remote-first, Europe-filtered. This avoids the location-change fragility (WellFound's location pill is unreliable to programmatically click).
+
+For **non-remote** mode: iterates configured cities from `config/user.yaml`.
+
+| Mode     | Search Query       |
 |----------|--------------------|
-| `berlin` | Berlin, Germany    |
-| `spain`  | Spain              |
+| remote   | Europe             |
+| non-remote | Berlin, Germany  |
+| non-remote | Spain            |

@@ -156,42 +156,31 @@ Set `providers.<name>: true` for each confirmed board.
 
 ## Step 8: Write config/user.yaml
 
-Write the collected values to `config/user.yaml`:
+Write the collected values to `config/user.yaml` using `write_file` (avoids pyyaml dependency issues):
 
-```bash
-python3 -c "
-import yaml
-
-config = {
-    'user': {
-        'name': '<name>',
-        'email': '<email>',
-        'linkedin_url': '<linkedin_url>',
-        'resume_pdf_path': 'config/resume.pdf',
-    },
-    'cv_path': 'config/cv.md',
-    'locations': [
-        {'city': '<city>', 'country': '<country>', 'country_code': '<code>'},
-        # ... additional locations
-    ],
-    'work_style': {
-        'preferred': '<remote|hybrid|onsite>',
-        'willing_to_relocate': False,
-    },
-    'search_terms': [],
-    'providers': {
-        'greenhouse': False,
-        'jobleads': False,
-        'wellfound': False,
-        'sprout': False,
-    },
-    'db_path': 'jobs.db',
-}
-
-with open('config/user.yaml', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-print('config/user.yaml written')
-"
+```yaml
+user:
+  name: <name>
+  email: <email>
+  linkedin_url: <linkedin_url>
+  resume_pdf_path: config/resume.pdf
+cv_path: config/cv.md
+locations:
+  - city: <city>
+    country: <country>
+    country_code: <code>
+work_style:
+  preferred: <remote|hybrid|onsite>
+  willing_to_relocate: false
+search_terms:
+  - Title One
+  - Title Two
+providers:
+  greenhouse: false
+  jobleads: false
+  wellfound: false
+  sprout: false
+db_path: jobs.db
 ```
 
 ---
@@ -205,7 +194,7 @@ Say:
 Check Chrome:
 
 ```bash
-curl -s http://localhost:9222/json/version | python3 -c "import sys,json; d=json.load(sys.stdin); print('OK')" 2>/dev/null || echo "NOT_RUNNING"
+curl -s http://localhost:9222/json/version 2>&1 | head -1 | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
 ```
 
 If `NOT_RUNNING`: tell user to run `~/start-chrome.sh`, wait for confirmation.

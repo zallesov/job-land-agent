@@ -416,6 +416,7 @@ VALUES ('job', <job_id>, 'research_complete', 'interviewprep', '<json>');
 - **External aggregator may list expired jobs**: JobLeads, indeed, and other aggregators frequently list roles that are no longer on the company's own ATS. Always cross-reference against the company's career portal (Workday, Greenhouse, Lever, PeopleForce) before writing a full assessment. If the role is absent from the company's ATS but still on the aggregator, flag it as likely expired/filled in the assessment notes.
 - **Dashboard research button creates orphaned commands (FIXED)**: Previously the dashboard spawned Hermes with `--skills job-research` but the skill wasn't in Hermes' library. Now both `job-research` and `apply-job` live under `/Users/zall/interviews/skills/` and are registered via `skills.external_dirs` in config.yaml. If orphaned commands still appear, verify the external_dirs config or symlink the skill into Hermes' skills directory.
 - **research_job.py needs ANTHROPIC_API_KEY**: The script uses `anthropic.Anthropic()` which requires the env var to be set. If running from a minimal cron environment or without the key, the script fails silently (exit code 1, error in `agent_commands.error` column). Either set the key or replace the Anthropic client with an OpenAI-compatible local client pointed at LM Studio.
+- **Kanban dispatch has no YAML concurrency key**: Adding `max_concurrency: 5` to the `kanban:` config section does NOT control how many tasks the dispatcher spawns. The dispatcher ignores it entirely. The ONLY mechanism is `hermes kanban dispatch --max N`. When `dispatch_in_gateway: true`, the gateway dispatches without `--max` and spawns ALL ready tasks simultaneously — catastrophic for 100+ tasks. For controlled dispatch, either set `dispatch_in_gateway: false` and dispatch manually with `--max 5`, or use a cronjob. See `references/kanban-mass-research.md`.
 
 ## Triggers
 
@@ -427,6 +428,7 @@ Use this skill when:
 - Understanding how scrapers, ingestion, dashboard, and agents fit together
 - Researching jobs manually via `delegate_task` when the pipeline script is blocked
 - Debugging orphaned `agent_commands` stuck in `pending`
+- Scheduling mass research (50+ jobs) via Kanban dispatcher — see `references/kanban-mass-research.md`
 
 ## References
 
@@ -441,3 +443,4 @@ Use this skill when:
 - `references/hermes-browser-infrastructure.md` — How the browser works, headless vs headed, cloud provider status, **cookie hijacking pitfall**.
 - `references/antler-incubator-companies.md` — Antler Berlin portfolio companies, URL filtering pattern, cohort structure.
 - `references/explee-company-discovery.md` — Explee.com company discovery: search configs, DOM extraction, post-discovery workflow, per-job Telegram notification pattern.
+- `references/kanban-mass-research.md` — Mass research (50–300+ jobs) via Kanban dispatcher: bulk task creation, concurrency control with `--max 5`, gateway dispatch pitfalls, and worker reclaim.
