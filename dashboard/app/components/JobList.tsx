@@ -90,7 +90,7 @@ export function JobListClient({
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "score" | "status">("score");
-  const [applyOnly, setApplyOnly] = useState(false);
+  const [verdictFilter, setVerdictFilter] = useState<string | null>(null);
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hasActive = jobs.some((j: any) => j.is_researching || j.is_scraping);
@@ -127,7 +127,7 @@ export function JobListClient({
   const visibleJobs = sortJobs(
     jobs.filter((job: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (deletedIds.has(job.id)) return false;
-      if (applyOnly && job.apply_verdict !== "Apply" && job.apply_verdict !== "Apply with caution") return false;
+      if (verdictFilter && job.apply_verdict !== verdictFilter) return false;
       return true;
     }),
     sortBy,
@@ -187,15 +187,22 @@ export function JobListClient({
             </button>
           ))}
           <div style={{ width: 1, height: 12, background: "var(--border-hi)", margin: "0 4px" }} />
-          <button onClick={() => setApplyOnly(v => !v)}
-            className="text-xs px-2 py-0.5 rounded transition-colors"
-            style={applyOnly
-              ? { background: "var(--green-bg)", color: "var(--green)", border: "1px solid var(--green-border)" }
-              : { color: "var(--text-2)", border: "1px solid transparent" }
-            }
-          >
-            Apply only
-          </button>
+          {([
+            { label: "All",     value: null },
+            { label: "Apply",   value: "Apply" },
+            { label: "Caution", value: "Apply with caution" },
+            { label: "Research", value: "Need Research" },
+          ] as const).map(({ label, value }) => (
+            <button key={label} onClick={() => setVerdictFilter(value)}
+              className="text-xs px-2 py-0.5 rounded transition-colors"
+              style={verdictFilter === value
+                ? { background: "var(--surface-hi)", color: "var(--text-1)", border: "1px solid var(--border-hi)" }
+                : { color: "var(--text-2)", border: "1px solid transparent" }
+              }
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Job list */}
