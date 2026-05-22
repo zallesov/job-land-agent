@@ -8,7 +8,7 @@ An autonomous job search assistant for software engineers. Scrapes job boards, e
 
 ## How it works
 
-1. **Scrape** — Playwright pulls jobs from Greenhouse, JobLeads, Wellfound, and Sprout into a local SQLite DB
+1. **Scrape** — Playwright pulls jobs from Greenhouse, JobLeads, Wellfound, Sprout, and Hirify into a local SQLite DB
 2. **Enrich** — AI extracts salary, apply URL, full description, and remote status from each posting
 3. **Sanity-check** — AI scores each job against your CV, filtering out mismatches by seniority, location, and work style
 4. **Research** — Deep company analysis: funding, Glassdoor, red flags, fit score
@@ -108,6 +108,7 @@ cd dashboard && npm run dev
 | [JobLeads](https://jobleads.com) | Feed-based | Aggregator with salary filters |
 | [Wellfound](https://wellfound.com) | UI-based | Startup-focused |
 | [Sprout](https://usesprout.com) | UI-based | EU-focused |
+| [Hirify](https://hirify.me) | Saved-filter UI | IT and Digital aggregator; user-managed saved filters |
 
 ---
 
@@ -124,6 +125,8 @@ All user config lives in `config/user.yaml` (copy from `config/user.yaml.example
 | `search_terms` | Job titles to search and filter by |
 | `providers` | Enable/disable each job board |
 | `db_path` | SQLite DB file path |
+
+Hirify ignores `search_terms`, `locations`, and `work_style` for search construction; create saved filters on Hirify and enable `providers.hirify`.
 
 ---
 

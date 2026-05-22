@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { CommandButton } from "./CommandButton";
-import { STATUS_COLORS, PROVIDER_COLORS } from "./JobList";
+import { PROVIDER_COLORS } from "./JobList";
 
 const PIPELINE_STATUSES = new Set(["new","enriched","screened","researching","researched","enrich_failed","screen_failed"]);
 const STATUSES = ["interesting","draft_ready","applied","interviewing","rejected","archived"];

@@ -61,3 +61,9 @@ def test_wellfound_check_auth():
 def test_sprout_check_auth():
     from scripts.providers.sprout.check_auth import check_auth
     check_auth(CDP_URL)
+
+
+@pytest.mark.e2e
+def test_hirify_check_auth():
+    from scripts.providers.hirify.check_auth import check_auth
+    check_auth(CDP_URL)

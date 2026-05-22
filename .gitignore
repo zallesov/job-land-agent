@@ -97,6 +97,9 @@ hermes-profile/cron/output/
 hermes-profile/home/
 hermes-profile/.skills_prompt_snapshot.json
 hermes-profile/.update_check
+hermes-profile/.clean_shutdown
+hermes-profile/skills/.bundled_manifest_*.tmp
+hermes-profile/skills/.usage.json
 
 # Legacy pipeline config (superseded by config/user.yaml)
 config/pipeline_config.json

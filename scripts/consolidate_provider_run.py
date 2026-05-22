@@ -26,7 +26,11 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", required=True, choices=["greenhouse", "jobleads", "wellfound", "sprout"])
+    parser.add_argument(
+        "--provider",
+        required=True,
+        choices=["greenhouse", "jobleads", "wellfound", "sprout", "hirify"],
+    )
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--runs-dir", type=Path)
     args = parser.parse_args()

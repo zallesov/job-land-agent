@@ -10,6 +10,7 @@ description: Run job scraping for one or all active providers. Reads config/user
 - "run scraping" / "scrape jobs" → all active providers
 - "run wellfound" → wellfound only
 - "run greenhouse" / "run pipeline for greenhouse" → greenhouse only
+- "run hirify" → hirify only
 
 ## Execution Rules
 
@@ -61,6 +62,7 @@ python3 scripts/scrape_greenhouse.py
 python3 scripts/scrape_jobleads.py
 python3 scripts/scrape_wellfound.py
 python3 scripts/scrape_sprout.py
+python3 scripts/scraping_pipeline.py --provider hirify
 
 # After all scrapers finish, ingest all outputs:
 python3 scripts/ingest_provider_outputs.py --db jobs.db --all-latest
@@ -105,6 +107,10 @@ Both modes exit with code 10. Tell the user to log in at https://www.jobleads.co
 python3 -c "import sqlite3; db=sqlite3.connect('jobs.db'); db.execute(\"DELETE FROM jobs WHERE provider='jobleads'\"); db.commit(); print(f'Deleted')"
 ```
 
+### Hirify saved filters
+
+Hirify does not use `search_terms`, `locations`, or `work_style` to build searches. The user must create saved filters on https://hirify.me/ first. The scraper opens every saved filter and collects all paginated jobs.
+
 ### Timeout risk with many provider × location combos
 
 Running all combos in a single execute_code script will hit the 300s timeout when there are 6+ combos. For 4+ combos, run them as individual foreground `terminal()` calls (one per combo). For 8+ combos, consider using `terminal(background=true, notify_on_complete=true)` and polling with `process()`.
@@ -143,4 +149,5 @@ See `check-auth/references/chrome-profile.md` for the full Chrome profile archit
 "run scraping"        → all active providers (locations read from config)
 "run greenhouse"      → greenhouse scraper only
 "run wellfound"       → wellfound scraper only
+"run hirify"          → hirify saved filters only
 ```
