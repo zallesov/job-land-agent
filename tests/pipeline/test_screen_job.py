@@ -57,6 +57,11 @@ def test_strong_apply_sets_screened_and_writes_assessment(mock_hermes, db_path, 
     assert assessment["apply_verdict"] == "Strong Apply"
     assert assessment["relevance_score"] == 90
     assert assessment["assessment_status"] == "screened"
+    assert assessment["one_line_summary"] == "Great fit"
+    assert assessment["seniority_fit"] == "Senior IC"
+    assert assessment["tech_stack_fit"] == "Python match"
+    assert assessment["remote_eligibility"] == "Remote EU"
+    assert assessment["salary_assessment"] == "€100k"
 
 
 @patch("scripts.pipeline.screen_job.hermes_call")
@@ -79,8 +84,9 @@ def test_hermes_failure_sets_screen_failed(mock_hermes, db_path, con):
     jid = _insert_job(con)
     from scripts.pipeline.screen_job import screen_job
     screen_job(jid, db_path=db_path)
-    row = con.execute("SELECT status FROM jobs WHERE id = ?", (jid,)).fetchone()
+    row = con.execute("SELECT status, comment FROM jobs WHERE id = ?", (jid,)).fetchone()
     assert row["status"] == "screen_failed"
+    assert row["comment"] == "timeout"
 
 
 @patch("scripts.pipeline.screen_job.hermes_call")
