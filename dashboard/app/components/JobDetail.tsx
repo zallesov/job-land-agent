@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { CommandButton } from "./CommandButton";
-import { STATUS_COLORS, PROVIDER_COLORS } from "./JobList";
+import { PROVIDER_COLORS } from "./JobList";
 
 const STATUSES = ["new","interesting","not_interested","researching","researched","draft_ready","applied","interviewing","rejected","archived"];
 const INTERVIEW_STATUSES = ["Not Applied", "Applied", "In process", "Rejected", "Offer", "Landed"];
