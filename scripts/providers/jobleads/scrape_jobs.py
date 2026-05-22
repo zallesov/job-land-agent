@@ -77,7 +77,7 @@ def scrape_jobs(
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salaryRaw") or None,
-            status="listed" if relevant else "skip",
+            status="new" if relevant else "skip",
         )
         jobs.append(j)
 
