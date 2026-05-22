@@ -30,14 +30,16 @@ const INTERVIEW_PILL: Record<string, { bg: string; color: string }> = {
 };
 
 const VERDICT_LEFT: Record<string, string> = {
-  "Apply":              "border-l-[var(--green)]",
-  "Apply with caution": "border-l-[var(--amber)]",
+  "Strong Apply":       "border-l-[var(--green)]",
+  "Apply with Caution": "border-l-[var(--amber)]",
+  "Need Research":      "border-l-[#60a5fa]",
   "Skip":               "border-l-[var(--red-border)]",
 };
 
 const VERDICT_LABEL: Record<string, string> = {
-  "Apply":              "text-[var(--green)]",
-  "Apply with caution": "text-[var(--amber)]",
+  "Strong Apply":       "text-[var(--green)]",
+  "Apply with Caution": "text-[var(--amber)]",
+  "Need Research":      "text-[#60a5fa]",
   "Skip":               "text-[var(--text-3)]",
 };
 
@@ -188,9 +190,9 @@ export function JobListClient({
           ))}
           <div style={{ width: 1, height: 12, background: "var(--border-hi)", margin: "0 4px" }} />
           {([
-            { label: "All",     value: null },
-            { label: "Apply",   value: "Apply" },
-            { label: "Caution", value: "Apply with caution" },
+            { label: "All",      value: null },
+            { label: "Apply",    value: "Strong Apply" },
+            { label: "Caution",  value: "Apply with Caution" },
             { label: "Research", value: "Need Research" },
           ] as const).map(({ label, value }) => (
             <button key={label} onClick={() => setVerdictFilter(value)}
