@@ -22,13 +22,13 @@ def test_happy_path(db_path):
     with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]) as mock_dedup, \
          patch("scripts.scraping_pipeline.ingest_jobs", return_value=[jid]) as mock_ingest, \
          patch("scripts.scraping_pipeline.enrich_job") as mock_enrich, \
-         patch("scripts.scraping_pipeline.sanity_check_job") as mock_sanity, \
+         patch("scripts.scraping_pipeline.screen_job") as mock_screen, \
          patch("scripts.scraping_pipeline.send_daily_digest") as mock_notify:
 
         mock_enrich.return_value = HermesResult(
             success=True, data={"status": "success"}, error=None, raw_output=""
         )
-        mock_sanity.return_value = HermesResult(
+        mock_screen.return_value = HermesResult(
             success=True, data={"status": "success", "verdict": "pass"},
             error=None, raw_output=""
         )
@@ -42,8 +42,8 @@ def test_happy_path(db_path):
     mock_dedup.assert_called_once()
     mock_ingest.assert_called_once()
     mock_enrich.assert_called_once_with(jid, db_path=db_path)
-    mock_sanity.assert_called_once_with(jid, db_path=db_path)
-    mock_notify.assert_called_once_with(enrich_failures=[], sanity_failures=[])
+    mock_screen.assert_called_once_with(jid, db_path=db_path)
+    mock_notify.assert_called_once_with(enrich_failures=[], screen_failures=[])
 
 
 def test_auth_error_stops_pipeline(db_path):
@@ -59,7 +59,7 @@ def test_auth_error_stops_pipeline(db_path):
     mock_scrape.assert_not_called()
 
 
-def test_enrich_failure_skips_sanity_for_that_job(db_path):
+def test_enrich_failure_skips_screen_for_that_job(db_path):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
     jid = 2
@@ -67,7 +67,7 @@ def test_enrich_failure_skips_sanity_for_that_job(db_path):
     with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]), \
          patch("scripts.scraping_pipeline.ingest_jobs", return_value=[jid]), \
          patch("scripts.scraping_pipeline.enrich_job") as mock_enrich, \
-         patch("scripts.scraping_pipeline.sanity_check_job") as mock_sanity, \
+         patch("scripts.scraping_pipeline.screen_job") as mock_screen, \
          patch("scripts.scraping_pipeline.send_daily_digest") as mock_notify:
 
         mock_enrich.return_value = HermesResult(
@@ -78,73 +78,9 @@ def test_enrich_failure_skips_sanity_for_that_job(db_path):
         run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
-    mock_sanity.assert_not_called()
+    mock_screen.assert_not_called()
     failures = mock_notify.call_args[1]["enrich_failures"]
     assert (jid, "timeout") in failures
-
-
-def test_research_commands_queued_for_new_jobs(db_path):
-    mock_check_auth = MagicMock()
-    mock_scrape = MagicMock(return_value=[_job()])
-    job_ids = [10, 11]
-
-    with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job(), _job()]), \
-         patch("scripts.scraping_pipeline.ingest_jobs", return_value=job_ids), \
-         patch("scripts.scraping_pipeline.enrich_job") as mock_enrich, \
-         patch("scripts.scraping_pipeline.sanity_check_job") as mock_sanity, \
-         patch("scripts.scraping_pipeline.send_daily_digest"):
-
-        mock_enrich.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
-        mock_sanity.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
-
-        from scripts.scraping_pipeline import run
-        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
-
-    import sqlite3, json as _json
-    con = sqlite3.connect(db_path)
-    rows = con.execute(
-        "SELECT payload_json FROM agent_commands WHERE command_type='research_job' AND status='pending'"
-    ).fetchall()
-    con.close()
-    queued_ids = {_json.loads(r[0])["job_id"] for r in rows}
-    assert queued_ids == {10, 11}
-
-
-def test_research_not_duplicated_if_already_pending(db_path):
-    import sqlite3, json as _json
-    con = sqlite3.connect(db_path)
-    con.execute(
-        "INSERT INTO agent_commands (command_type, payload_json, status, created_by) "
-        "VALUES ('research_job', ?, 'pending', 'test')",
-        (_json.dumps({"job_id": 20}),),
-    )
-    con.commit()
-    con.close()
-
-    mock_check_auth = MagicMock()
-    mock_scrape = MagicMock(return_value=[_job()])
-
-    with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]), \
-         patch("scripts.scraping_pipeline.ingest_jobs", return_value=[20]), \
-         patch("scripts.scraping_pipeline.enrich_job") as mock_enrich, \
-         patch("scripts.scraping_pipeline.sanity_check_job") as mock_sanity, \
-         patch("scripts.scraping_pipeline.send_daily_digest"):
-
-        mock_enrich.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
-        mock_sanity.return_value = HermesResult(success=True, data={}, error=None, raw_output="")
-
-        from scripts.scraping_pipeline import run
-        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
-            _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
-
-    con = sqlite3.connect(db_path)
-    count = con.execute(
-        "SELECT COUNT(*) FROM agent_commands WHERE command_type='research_job' "
-        "AND json_extract(payload_json,'$.job_id')=20"
-    ).fetchone()[0]
-    con.close()
-    assert count == 1
 
 
 def test_titles_passed_to_scrape_jobs(db_path):

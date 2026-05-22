@@ -20,10 +20,10 @@ def test_ingest_returns_ids(db_path):
     assert all(isinstance(i, int) for i in ids)
 
 
-def test_ingest_sets_status_listed(db_path, con):
+def test_ingest_sets_status_new(db_path, con):
     ids = ingest_jobs([_job()], db_path=db_path)
     row = con.execute("SELECT status, dedup_key FROM jobs WHERE id = ?", (ids[0],)).fetchone()
-    assert row["status"] == "listed"
+    assert row["status"] == "new"
     assert row["dedup_key"] == "Acme::SWE"
 
 

@@ -13,7 +13,7 @@ class ShallowJob:
     dedup_key: str        # "{company}::{title}"
     posting_date: str | None
     salary_raw: str | None
-    status: str = "listed"  # "listed" | "skip"
+    status: str = "new"  # "new" | "skip"
 
 
 @dataclass

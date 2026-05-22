@@ -14,19 +14,19 @@ def telegram_notify(message: str) -> None:
 
 def send_daily_digest(
     enrich_failures: list[tuple[int, str]] | None = None,
-    sanity_failures: list[tuple[int, str]] | None = None,
+    screen_failures: list[tuple[int, str]] | None = None,
 ) -> None:
     enrich_failures = enrich_failures or []
-    sanity_failures = sanity_failures or []
-    if not enrich_failures and not sanity_failures:
+    screen_failures = screen_failures or []
+    if not enrich_failures and not screen_failures:
         return
     lines = ["Pipeline completed with failures"]
     if enrich_failures:
         lines.append(f"Enrich failed: {len(enrich_failures)} job(s)")
         for jid, err in enrich_failures[:5]:
             lines.append(f"  - job {jid}: {err[:60]}")
-    if sanity_failures:
-        lines.append(f"Sanity check failed: {len(sanity_failures)} job(s)")
-        for jid, err in sanity_failures[:5]:
+    if screen_failures:
+        lines.append(f"Screen failed: {len(screen_failures)} job(s)")
+        for jid, err in screen_failures[:5]:
             lines.append(f"  - job {jid}: {err[:60]}")
     telegram_notify("\n".join(lines))
