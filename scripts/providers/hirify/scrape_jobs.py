@@ -48,55 +48,37 @@ def _normalize_raw_job(raw: dict) -> ShallowJob:
     )
 
 
-def _get_saved_filters(page) -> list[dict]:
-    filters = page.evaluate(
-        """() => {
-        const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [data-state], [class*="filter"], [class*="saved"]'));
-        const visible = candidates.filter((el) => {
-            const text = (el.innerText || el.textContent || '').trim();
-            const rect = el.getBoundingClientRect();
-            return text && rect.width > 0 && rect.height > 0;
-        });
-        const savedSection = visible.filter((el) => {
-            const text = (el.innerText || el.textContent || '').trim().toLowerCase();
-            const aria = (el.getAttribute('aria-label') || '').toLowerCase();
-            const cls = (el.getAttribute('class') || '').toLowerCase();
-            return aria.includes('filter') || aria.includes('saved') ||
-                   cls.includes('filter') || cls.includes('saved') ||
-                   text.includes('saved');
-        });
-        return savedSection.map((el, index) => ({
-            index,
-            label: (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 120),
-        })).filter((item) => item.label && !/^show filters$/i.test(item.label) && !/^save filter$/i.test(item.label));
-        }"""
+def _get_saved_filter_options(page) -> list[str]:
+    """Open the saved-filter combobox and return all option labels."""
+    combo = page.locator('[role="combobox"]').first
+    combo.click()
+    page.wait_for_timeout(1000)
+    options = page.evaluate(
+        """() => Array.from(document.querySelectorAll('[role="option"]'))
+               .map(el => (el.innerText || '').trim())
+               .filter(Boolean)"""
     )
-    return [f for f in filters if f.get("label")]
+    # Close by pressing Escape
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+    return options
 
 
-def _activate_saved_filter(page, saved_filter: dict) -> None:
+def _select_saved_filter(page, label: str) -> None:
+    """Select a saved filter by label from the combobox dropdown."""
+    combo = page.locator('[role="combobox"]').first
+    combo.click()
+    page.wait_for_timeout(1000)
     page.evaluate(
-        """(index) => {
-        const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [data-state], [class*="filter"], [class*="saved"]'));
-        const visible = candidates.filter((el) => {
-            const text = (el.innerText || el.textContent || '').trim();
-            const rect = el.getBoundingClientRect();
-            if (!text || rect.width <= 0 || rect.height <= 0) return false;
-            if (/^(show filters|save filter)$/i.test(text)) return false;
-            const aria = (el.getAttribute('aria-label') || '').toLowerCase();
-            const cls = (el.getAttribute('class') || '').toLowerCase();
-            const lowerText = text.toLowerCase();
-            return aria.includes('filter') || aria.includes('saved') ||
-                   cls.includes('filter') || cls.includes('saved') ||
-                   lowerText.includes('saved');
-        });
-        const target = visible[index];
-        if (!target) throw new Error(`Saved filter index not found: ${index}`);
-        target.click();
+        """(label) => {
+            const opt = Array.from(document.querySelectorAll('[role="option"]'))
+                .find(el => el.innerText.trim() === label);
+            if (!opt) throw new Error(`Saved filter not found: ${label}`);
+            opt.click();
         }""",
-        saved_filter["index"],
+        label,
     )
-    page.wait_for_timeout(1500)
+    page.wait_for_timeout(2000)
 
 
 def _collect_current_page_jobs(page) -> list[dict]:
@@ -114,16 +96,27 @@ def _collect_current_page_jobs(page) -> list[dict]:
             }
             return best;
         }
+        const skipLine = (line) => /^(fulltime|part.?time|project|hybrid|remote|onsite|relocation|trainee|junior|middle|senior|lead|head|director|c-level)$/i.test(line);
+        const dateLine = (line) => /\b(ago|viewed)\b/i.test(line) || /^updated\s/i.test(line);
+        const skillTag = (line) => /^\+\d+/.test(line) || (line.length < 30 && /^[a-z][\w.+/-]*$/.test(line));
         return anchors.map((anchor) => {
             const url = new URL(anchor.getAttribute('href'), window.location.href).href;
             if (seen.has(url)) return null;
             seen.add(url);
             const card = cardFor(anchor);
             const lines = (card.innerText || '').split('\\n').map((v) => v.trim()).filter(Boolean);
-            const anchorText = (anchor.innerText || '').trim();
-            const title = anchorText || lines.find((line) => line.length > 3) || '';
+            // Company: first non-skip line
+            const company = lines.find((line) => !skipLine(line) && !dateLine(line) && !skillTag(line)) || '';
+            // Title: first line after a date line that isn't a skip/skill line
+            let title = '';
+            let sawDate = false;
+            for (const line of lines) {
+                if (dateLine(line)) { sawDate = true; continue; }
+                if (sawDate && !skipLine(line) && !skillTag(line) && line.length > 3) { title = line; break; }
+            }
+            // Fallback: first line with mixed case that isn't the company
+            if (!title) title = lines.find((line) => line !== company && /[A-Z]/.test(line) && line.length > 5) || lines[0] || '';
             const salary = lines.find((line) => /([$€₽]|USD|EUR|RUB|GBP|USDT)/i.test(line)) || '';
-            const company = lines.find((line) => line !== title && !/seconds ago|minutes ago|updated|fulltime|parttime|remote|hybrid|onsite/i.test(line)) || '';
             const locationParts = lines.filter((line) => /remote|hybrid|onsite|Europe|USA|Germany|Spain|UK|Poland|Lithuania|France|Italy|Serbia|Japan|Russia/i.test(line));
             const country = (locationParts.join(' ').match(/Germany|Spain|UK|Poland|Lithuania|France|Italy|Serbia|Japan|Russia|USA|Europe/i) || [''])[0];
             return {
@@ -194,17 +187,17 @@ def _scrape_jobs_from_page(page) -> list[ShallowJob]:
 
     page.goto(HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
     page.wait_for_timeout(2000)
-    filters = _get_saved_filters(page)
-    if not filters:
+    filter_labels = _get_saved_filter_options(page)
+    if not filter_labels:
         print(
             "[hirify] No saved filters found. Create saved filters on https://hirify.me/ first.",
             file=sys.stderr,
             flush=True,
         )
         return []
-    for saved_filter in filters:
+    for label in filter_labels:
         try:
-            _activate_saved_filter(page, saved_filter)
+            _select_saved_filter(page, label)
             for row in _scrape_filter_pages(page):
                 url = _canonical_url(row.get("url") or "")
                 if url and url not in seen_urls:
@@ -213,7 +206,7 @@ def _scrape_jobs_from_page(page) -> list[ShallowJob]:
                     raw_rows.append(row)
         except Exception as e:
             print(
-                f"[hirify] WARNING: saved filter {saved_filter.get('label', saved_filter.get('index'))!r} failed: {e}",
+                f"[hirify] WARNING: saved filter {label!r} failed: {e}",
                 file=sys.stderr,
                 flush=True,
             )

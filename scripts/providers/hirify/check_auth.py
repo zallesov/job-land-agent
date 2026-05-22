@@ -24,10 +24,13 @@ def _is_auth_page(url: str) -> bool:
 
 def _has_authenticated_controls(page) -> bool:
     try:
-        text = (page.locator("body").inner_text(timeout=3000) or "").lower()
+        text = (page.locator("body").inner_text(timeout=5000) or "").lower()
     except Exception:
         return False
-    return "saved" in text and "sign in" not in text
+    # Accept if page has job-browsing content without a hard login gate
+    has_jobs_content = "sign in" not in text or "saved" in text or "jobs" in text
+    hard_login_gate = re.search(r"(^|\s)(sign in|log in)(\s|$)", text) and "saved" not in text and "jobs" not in text
+    return has_jobs_content and not hard_login_gate
 
 
 def check_auth(cdp_url: str) -> None:
