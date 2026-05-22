@@ -165,3 +165,9 @@ def test_titles_passed_to_scrape_jobs(db_path):
     mock_scrape.assert_called_once_with(
         CDP, titles=["AI Engineer", "Software Engineer"], db_path=db_path
     )
+
+
+def test_hirify_is_registered_provider():
+    from scripts.scraping_pipeline import PROVIDERS
+
+    assert "hirify" in PROVIDERS

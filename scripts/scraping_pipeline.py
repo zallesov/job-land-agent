@@ -10,7 +10,7 @@ Usage:
   python3 scripts/scraping_pipeline.py --provider jobleads --titles "Software Engineer,AI Engineer"
 
 Options:
-  --provider <name>   Provider: greenhouse | jobleads | wellfound | sprout
+  --provider <name>   Provider: greenhouse | jobleads | wellfound | sprout | hirify
   --titles <str>      Comma-separated title search terms (optional; overrides config)
   --cdp-url <url>     CDP endpoint (default: http://localhost:9222)
   --db <path>         DB path (default: jobs.db in project root)
@@ -35,7 +35,7 @@ from scripts.pipeline.notify import send_daily_digest
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
-PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout"}
+PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout", "hirify"}
 
 
 def _queue_research(job_ids: list[int], db_path: str) -> int:
