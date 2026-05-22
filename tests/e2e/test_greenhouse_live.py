@@ -5,7 +5,7 @@ Run manually: pytest tests/e2e/ -m e2e -v
 Fixtures at tests/fixtures/e2e/:
   index.json                  — metadata for all fixtures
   job_<id>_<company>.json     — page text, expected_verdict, url per job
-  cv.md                       — candidate CV used by enrich-job + sanity-check-job skills
+  cv.md                       — candidate CV used by enrich-job + screen-job skills
 """
 import json
 import pytest
@@ -65,11 +65,11 @@ def test_enrich_job_live(fixture_file, expected):
     (item["file"].split("/")[-1], item["expected_verdict"])
     for item in _load("index.json")
 ])
-def test_sanity_check_job_live(fixture_file, expected):
-    """Sanity-check each fixture job via real Hermes. Verifies verdict matches expected."""
-    from scripts.pipeline.sanity_check_job import sanity_check_job
+def test_screen_job_live(fixture_file, expected):
+    """Screen each fixture job via real Hermes. Verifies verdict matches expected."""
+    from scripts.pipeline.screen_job import screen_job
     job = _load(fixture_file)
-    result = sanity_check_job(job["id"], db_path=E2E_DB)
+    result = screen_job(job["id"], db_path=E2E_DB)
     if expected == "skip":
         assert result.data.get("verdict") == "skip", f"expected skip, got: {result.data}"
     elif expected == "pass":
