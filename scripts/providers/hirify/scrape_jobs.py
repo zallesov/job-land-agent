@@ -136,3 +136,88 @@ def _collect_current_page_jobs(page) -> list[dict]:
         }).filter((row) => row && row.title && row.url);
         }"""
     )
+
+
+def _page_signature(rows: list[dict]) -> tuple[str, ...]:
+    return tuple(sorted(_canonical_url(row.get("url") or "") for row in rows if row.get("url")))
+
+
+def _click_next_page(page) -> bool:
+    return bool(page.evaluate(
+        """() => {
+        const candidates = Array.from(document.querySelectorAll('a, button'));
+        const next = candidates.find((el) => /^next$/i.test((el.innerText || el.textContent || '').trim()));
+        if (!next) return false;
+        const disabled = next.disabled || next.getAttribute('aria-disabled') === 'true' || /disabled/i.test(next.getAttribute('class') || '');
+        if (disabled) return false;
+        next.click();
+        return true;
+        }"""
+    ))
+
+
+def _scrape_filter_pages(page) -> list[dict]:
+    rows: list[dict] = []
+    seen_page_signatures: set[tuple[str, ...]] = set()
+    for _ in range(100):
+        page.wait_for_timeout(1000)
+        current = _collect_current_page_jobs(page)
+        signature = _page_signature(current)
+        if not signature or signature in seen_page_signatures:
+            break
+        seen_page_signatures.add(signature)
+        rows.extend(current)
+        if not _click_next_page(page):
+            break
+    return rows
+
+
+def scrape_jobs(
+    cdp_url: str,
+    titles: list[str] | None = None,
+    db_path: str | None = None,
+    _config: dict | None = None,
+) -> list[ShallowJob]:
+    _ = titles, db_path, (_config if _config is not None else _load_config())
+    raw_rows: list[dict] = []
+    seen_urls: set[str] = set()
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.connect_over_cdp(cdp_url)
+        ctx = browser.contexts[0]
+        page = ctx.new_page()
+        try:
+            page.goto(HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2000)
+            filters = _get_saved_filters(page)
+            if not filters:
+                print(
+                    "[hirify] No saved filters found. Create saved filters on https://hirify.me/ first.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return []
+            for saved_filter in filters:
+                try:
+                    _activate_saved_filter(page, saved_filter)
+                    for row in _scrape_filter_pages(page):
+                        url = _canonical_url(row.get("url") or "")
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            row["url"] = url
+                            raw_rows.append(row)
+                except Exception as e:
+                    print(
+                        f"[hirify] WARNING: saved filter {saved_filter.get('label', saved_filter.get('index'))!r} failed: {e}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+        finally:
+            page.close()
+
+    jobs: list[ShallowJob] = []
+    for row in raw_rows:
+        if not row.get("title") or not row.get("url"):
+            continue
+        jobs.append(_normalize_raw_job(row))
+    return jobs

@@ -3,7 +3,7 @@ from scripts.providers.hirify.scrape_jobs import (
     _canonical_url,
     _normalize_raw_job,
 )
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_canonical_url_resolves_relative_hirify_links():
@@ -80,3 +80,47 @@ def test_collect_current_page_jobs_returns_raw_rows():
 
     assert rows[0]["title"] == "AI Engineer"
     assert rows[0]["url"] == "https://hirify.me/jobs/1"
+
+
+def test_scrape_filter_pages_stops_when_next_disappears():
+    from scripts.providers.hirify import scrape_jobs as mod
+
+    page = MagicMock()
+    with patch.object(mod, "_collect_current_page_jobs", side_effect=[
+        [{"title": "AI Engineer", "company": "Acme", "url": "https://hirify.me/jobs/1"}],
+        [{"title": "Backend Engineer", "company": "Beta", "url": "https://hirify.me/jobs/2"}],
+    ]), patch.object(mod, "_click_next_page", side_effect=[True, False]):
+        rows = mod._scrape_filter_pages(page)
+
+    assert [r["url"] for r in rows] == ["https://hirify.me/jobs/1", "https://hirify.me/jobs/2"]
+
+
+def test_scrape_jobs_dedups_across_filters_and_ignores_titles():
+    from scripts.providers.hirify import scrape_jobs as mod
+
+    pw_mock = MagicMock()
+    page = MagicMock()
+    ctx = MagicMock()
+    ctx.new_page.return_value = page
+    browser = MagicMock()
+    browser.contexts = [ctx]
+    pw_instance = MagicMock()
+    pw_instance.chromium.connect_over_cdp.return_value = browser
+    pw_mock.__enter__.return_value = pw_instance
+    pw_mock.__exit__.return_value = False
+
+    raw = [
+        {"title": "Backend Engineer", "company": "Acme", "url": "https://hirify.me/jobs/1"},
+        {"title": "Backend Engineer", "company": "Acme", "url": "https://hirify.me/jobs/1"},
+    ]
+
+    with patch.object(mod, "sync_playwright", return_value=pw_mock), \
+         patch.object(mod, "_get_saved_filters", return_value=[{"index": 0, "label": "A"}, {"index": 1, "label": "B"}]), \
+         patch.object(mod, "_activate_saved_filter"), \
+         patch.object(mod, "_scrape_filter_pages", return_value=raw), \
+         patch.object(mod, "is_relevant", return_value=True):
+        jobs = mod.scrape_jobs("http://localhost:9222", titles=["AI Engineer"])
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Backend Engineer"
+    page.goto.assert_called_once_with(mod.HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
