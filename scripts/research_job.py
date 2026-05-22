@@ -50,12 +50,8 @@ SCHEMA_DESCRIPTION = """{
   "red_flag_scan": "string",
   "seniority_fit": "string",
   "tech_stack_fit": "string",
-  "ic_or_management": "IC | Management | Both | Unknown",
   "salary_assessment": "string",
   "remote_eligibility": "string",
-  "visa_contract_structure": "string",
-  "ai_native_assessment": "string",
-  "assessment_notes": "string",
   "research_notes": "string",
   "source_urls": ["url1", "url2"]
 }"""
