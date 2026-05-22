@@ -20,7 +20,7 @@ Options:
   --search-url <url>      Raw search URL (can repeat; overrides --titles)
   --country <str>         Country label for output JSON (used with --search-url)
   --location-label <str>  Label for output filename (used with --search-url)
-  --browser-profile <p>   Persistent Chromium profile dir (default: ~/.interviews-browser-profile)
+  --browser-profile <p>   Persistent Chromium profile dir (default: ~/.chrome-profile)
   --cdp-url <url>         CDP endpoint (default: http://localhost:9222)
   --headless              Run headless (no visible browser window)
   --date <YYYY-MM-DD>     Override today's date in output filename
@@ -45,7 +45,7 @@ LOCATION_PRESETS: dict[str, dict] = {
 }
 
 GREENHOUSE_BASE = "https://my.greenhouse.io/jobs"
-DEFAULT_PROFILE = Path.home() / ".interviews-browser-profile"
+DEFAULT_PROFILE = Path.home() / ".chrome-profile"
 PROJECT_ROOT = Path(__file__).parent.parent
 
 

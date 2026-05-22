@@ -49,7 +49,7 @@ Each job object: `provider`, `company`, `title`, `url`, `applyUrl`, `description
 
 ## Session Persistence Model (IMPORTANT)
 
-The Chrome profile at `~/.interviews-browser-profile` stores ALL session state permanently:
+The Chrome profile at `~/.chrome-profile` stores ALL session state permanently:
 - WellFound login (Google OAuth token)
 - DataDome bot-detection cookie
 - Saved search configuration (roles, location, filters)

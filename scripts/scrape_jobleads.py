@@ -21,7 +21,7 @@ Options:
   --country <str>         Country label for output JSON (used with --search-url)
   --location-label <str>  Label for output filename (used with --search-url)
   --output-dir <path>     Default: outputs/jobleads/runs/
-  --browser-profile <p>   Persistent Chromium profile dir (default: ~/.interviews-browser-profile)
+  --browser-profile <p>   Persistent Chromium profile dir (default: ~/.chrome-profile)
   --cdp-url <url>         CDP endpoint (default: http://localhost:9222)
   --headless              Run headless (no visible browser window)
   --date <YYYY-MM-DD>     Override today's date in output filename
@@ -67,7 +67,7 @@ LOCATION_PRESETS: dict[str, dict] = {
     },
 }
 
-DEFAULT_PROFILE = Path.home() / ".interviews-browser-profile"
+DEFAULT_PROFILE = Path.home() / ".chrome-profile"
 PROJECT_ROOT = Path(__file__).parent.parent
 
 COUNTRY_CODE_TO_PRESET: dict[str, str] = {

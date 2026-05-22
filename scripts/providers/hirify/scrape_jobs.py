@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
+from scripts.providers.hirify.cdp_fallback import CdpPage
 from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -179,41 +180,43 @@ def scrape_jobs(
     _config: dict | None = None,
 ) -> list[ShallowJob]:
     _ = titles, db_path, (_config if _config is not None else _load_config())
+    try:
+        return _scrape_jobs_with_playwright(cdp_url)
+    except Exception as e:
+        if "Browser.setDownloadBehavior" not in str(e):
+            raise
+        return _scrape_jobs_with_cdp(cdp_url)
+
+
+def _scrape_jobs_from_page(page) -> list[ShallowJob]:
     raw_rows: list[dict] = []
     seen_urls: set[str] = set()
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.connect_over_cdp(cdp_url)
-        ctx = browser.contexts[0]
-        page = ctx.new_page()
+    page.goto(HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
+    page.wait_for_timeout(2000)
+    filters = _get_saved_filters(page)
+    if not filters:
+        print(
+            "[hirify] No saved filters found. Create saved filters on https://hirify.me/ first.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return []
+    for saved_filter in filters:
         try:
-            page.goto(HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(2000)
-            filters = _get_saved_filters(page)
-            if not filters:
-                print(
-                    "[hirify] No saved filters found. Create saved filters on https://hirify.me/ first.",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                return []
-            for saved_filter in filters:
-                try:
-                    _activate_saved_filter(page, saved_filter)
-                    for row in _scrape_filter_pages(page):
-                        url = _canonical_url(row.get("url") or "")
-                        if url and url not in seen_urls:
-                            seen_urls.add(url)
-                            row["url"] = url
-                            raw_rows.append(row)
-                except Exception as e:
-                    print(
-                        f"[hirify] WARNING: saved filter {saved_filter.get('label', saved_filter.get('index'))!r} failed: {e}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-        finally:
-            page.close()
+            _activate_saved_filter(page, saved_filter)
+            for row in _scrape_filter_pages(page):
+                url = _canonical_url(row.get("url") or "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    row["url"] = url
+                    raw_rows.append(row)
+        except Exception as e:
+            print(
+                f"[hirify] WARNING: saved filter {saved_filter.get('label', saved_filter.get('index'))!r} failed: {e}",
+                file=sys.stderr,
+                flush=True,
+            )
 
     jobs: list[ShallowJob] = []
     for row in raw_rows:
@@ -221,3 +224,22 @@ def scrape_jobs(
             continue
         jobs.append(_normalize_raw_job(row))
     return jobs
+
+
+def _scrape_jobs_with_playwright(cdp_url: str) -> list[ShallowJob]:
+    with sync_playwright() as pw:
+        browser = pw.chromium.connect_over_cdp(cdp_url)
+        ctx = browser.contexts[0]
+        page = ctx.new_page()
+        try:
+            return _scrape_jobs_from_page(page)
+        finally:
+            page.close()
+
+
+def _scrape_jobs_with_cdp(cdp_url: str) -> list[ShallowJob]:
+    page = CdpPage(cdp_url)
+    try:
+        return _scrape_jobs_from_page(page)
+    finally:
+        page.close()

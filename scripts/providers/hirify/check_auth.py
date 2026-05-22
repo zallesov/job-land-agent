@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from playwright.sync_api import sync_playwright
 
+from scripts.providers.hirify.cdp_fallback import CdpPage
 from scripts.providers._shared.auth_check import wait_for_auth
 
 CHECK_URL = "https://hirify.me/"
@@ -30,14 +31,25 @@ def _has_authenticated_controls(page) -> bool:
 
 
 def check_auth(cdp_url: str) -> None:
-    with sync_playwright() as pw:
-        browser = pw.chromium.connect_over_cdp(cdp_url)
-        ctx = browser.contexts[0]
-        page = ctx.new_page()
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.connect_over_cdp(cdp_url)
+            ctx = browser.contexts[0]
+            page = ctx.new_page()
+            try:
+                ok = wait_for_auth(page, "hirify", CHECK_URL, _is_auth_page)
+                if ok and not _has_authenticated_controls(page):
+                    ok = False
+            finally:
+                page.close()
+    except Exception as e:
+        if "Browser.setDownloadBehavior" not in str(e):
+            raise
+        page = CdpPage(cdp_url)
         try:
-            ok = wait_for_auth(page, "hirify", CHECK_URL, _is_auth_page)
-            if ok and not _has_authenticated_controls(page):
-                ok = False
+            page.goto(CHECK_URL, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2000)
+            ok = not _is_auth_page(page.url) and _has_authenticated_controls(page)
         finally:
             page.close()
     if not ok:
