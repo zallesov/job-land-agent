@@ -228,7 +228,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
           </a>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          {(job.status === "screened" || job.status === "researched") && (
+          {(currentStatus === "screened" || currentStatus === "researched") && (
             <CommandButton jobId={jobId} commands={commands ?? []} onDone={load} compact />
           )}
           {canApply && (
