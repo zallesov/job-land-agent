@@ -107,3 +107,6 @@ tmp/skills/
 # Personal files
 ALEKSANDR_*.md
 jobs_all.*
+
+# Chrome persistent profile (auto-created by start-chrome.sh)
+.chrome-profile

@@ -61,8 +61,7 @@ Follow [Hermes Telegram bot setup](https://hermes-agent.com/docs/telegram). Enab
 **5. Start Chrome**
 
 ```bash
-cp start-chrome.sh ~/start-chrome.sh && chmod +x ~/start-chrome.sh
-~/start-chrome.sh
+bash start-chrome.sh
 # Launches Chrome on localhost:9222 with a persistent profile
 ```
 

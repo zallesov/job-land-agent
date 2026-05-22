@@ -115,6 +115,24 @@ Map answer to `preferred: remote | hybrid | onsite` and `willing_to_relocate: tr
 
 ---
 
+## Step 5.5: Ask for free-text user preferences
+
+After work style, ask:
+
+> Do you have any additional preferences for your job search? This is a free-text field — anything that doesn't fit in the structured fields above.
+>
+> Examples:
+> - "I am looking for roles as Individual Contributor, in adTech startup"
+> - "I'm only considering stable companies, no startups"
+> - "Prefer B2B SaaS, no crypto/blockchain"
+> - "Must be EU timezone, no US hours"
+>
+> You can leave this blank if you don't have specific preferences.
+
+Collect the raw text. Write as-is to `user_preferences` in config. If the user leaves it blank, set to `""`.
+
+---
+
 ## Step 6: Infer and confirm search terms
 
 Read the CV content:
@@ -180,6 +198,7 @@ providers:
   jobleads: false
   wellfound: false
   sprout: false
+user_preferences: "<free-text preferences or empty>"
 db_path: jobs.db
 ```
 
@@ -197,13 +216,21 @@ Check Chrome:
 curl -s http://localhost:9222/json/version 2>&1 | head -1 | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
 ```
 
-If `NOT_RUNNING`: tell user to run `~/start-chrome.sh`, wait for confirmation.
+If `NOT_RUNNING`: tell user to run `bash start-chrome.sh`, wait for confirmation.
 
 Then invoke the `check-auth` skill:
 
 > Running auth checks for your active providers...
 
 (Invoke check-auth skill here.)
+
+---
+
+## Step 9.5: Explain Chrome profile separation
+
+After auth checks pass, optionally mention:
+
+> One note: this setup uses a **dedicated** Chrome profile at `.chrome-profile/` inside the project directory, separate from your everyday Chrome. Sessions (logins, cookies) you enter here persist between restarts in **this profile only** — they don't carry over from your main Chrome. If you log into Greenhouse/Wellfound/JobLeads once, those sessions will survive restarts.
 
 ---
 

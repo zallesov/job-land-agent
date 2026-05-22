@@ -58,13 +58,21 @@ Auth check results:
 
 Tell the user:
 
-> Open the Chrome window (run `~/start-chrome.sh` if not running), navigate to <provider login URL>, log in manually, then run `/check-auth` again to verify.
+> Open the Chrome window (run `bash start-chrome.sh` if not running), navigate to <provider login URL>, log in manually, then run `/check-auth` again to verify.
 
 Provider login URLs:
 - **Greenhouse:** https://my.greenhouse.io/users/sign_in
 - **JobLeads:** https://www.jobleads.com/login
 - **Wellfound:** https://wellfound.com/login
 - **Sprout:** https://app.usesprout.com/login
+
+## Pitfall: Session loss after improper Chrome shutdown
+
+If Chrome was killed via `pkill`, Force Quit, or crash, the `Current Session` and `Last Session` files are lost — even though the profile directory still has data. This means all previously saved login sessions (cookies) for job boards are gone, and `check-auth` will correctly report ❌ for every provider.
+
+**Fix:** User must re-login to all provider services in the Chrome window, then run `/check-auth` again. Always close Chrome normally (Cmd+Q) going forward — the `--restore-last-session` + `--use-mock-keychain` flags in `start-chrome.sh` will restore sessions automatically on proper shutdowns.
+
+See `references/chrome-profile.md` for full details on session persistence behavior.
 
 ## Pitfall: JobLeads false positive
 
@@ -84,4 +92,10 @@ Before running any check_auth:
 curl -s http://localhost:9222/json/version 2>&1 | head -1 | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
 ```
 
-If `NOT_RUNNING`: tell user to run `~/start-chrome.sh` first.
+If `NOT_RUNNING`: tell user to run `bash start-chrome.sh` first.
+
+If the check above shows `OK` but `check_auth.py` later reports `ECONNREFUSED ::1:9222`, Chrome started but is blocked by a macOS Keychain dialog. Kill Chrome (`pkill -f "Google Chrome"`), verify `--use-mock-keychain` is in `start-chrome.sh`, and restart.
+
+**Profile note:** Chrome uses a dedicated profile at `.chrome-profile/` — see `references/chrome-profile.md` for details on session persistence and the profile architecture.
+
+**Open-source note:** All path references to Chrome profile must be project-relative (never `$HOME`/`Path.home()`). The agent's terminal can resolve `$HOME` to a Hermes sandbox path, not the real user home — script-relative paths (`$(dirname "$0")` or `Path(__file__).resolve().parent.parent`) are the only portable option.

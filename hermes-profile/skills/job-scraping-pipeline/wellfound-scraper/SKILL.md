@@ -49,7 +49,7 @@ Each job object: `provider`, `company`, `title`, `url`, `applyUrl`, `description
 
 ## Session Persistence Model (IMPORTANT)
 
-The Chrome profile at `~/.interviews-browser-profile` stores ALL session state permanently:
+The Chrome profile at `.chrome-profile/` (inside the project dir) stores ALL session state permanently:
 - WellFound login (Google OAuth token)
 - DataDome bot-detection cookie
 - Saved search configuration (roles, location, filters)
@@ -62,7 +62,7 @@ The Chrome profile at `~/.interviews-browser-profile` stores ALL session state p
 2. **Chrome must be authenticated** with WellFound (Google OAuth complete)
 3. **Saved search must be configured** with desired filters
 
-If Chrome not running: tell user to run `~/start-chrome.sh`.
+If Chrome not running: tell user to run `bash start-chrome.sh`.
 
 ## Google One Tap Auth Flow
 

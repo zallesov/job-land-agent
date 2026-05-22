@@ -10,13 +10,13 @@ Chrome runs persistently at `http://localhost:9222` with a saved session profile
 - **Always use native browser tools**: `browser_navigate`, `browser_click`, `browser_snapshot`, `browser_type`, etc.
 - **Never launch a new browser.** Never pass headless flags. Never use `--user-data-dir`. Chrome is already running.
 - **Never use Playwright MCP tools** (`mcp__playwright__*`) for job research or scraping — they connect to the same Chrome but tool consistency matters; prefer native browser tools.
-- If `browser_navigate` fails with "no browser", tell the user to run `~/start-chrome.sh` first, then retry.
+- If `browser_navigate` fails with "no browser", tell the user to run `bash start-chrome.sh` first, then retry.
 - Sessions (Greenhouse login, JobLeads login, etc.) persist in the profile — do not re-authenticate unless explicitly told the session expired.
 
 ## Always-Known Facts
 
 - **User config:** `config/user.yaml` — cv_path, locations, providers, search_terms, user identity, work_style
-- **Chrome:** must be running at `localhost:9222` before any scraping or auth. Start with `~/start-chrome.sh`.
+- **Chrome:** must be running at `localhost:9222` before any scraping or auth. Start with `bash start-chrome.sh`.
 - **Dashboard:** `http://localhost:3000` (start with `cd dashboard && npm run dev`)
 - **DB path:** from `config/user.yaml` `db_path` field (default: `jobs.db`)
 - **Skills dir:** `skills.external_dirs` in `hermes-profile/config.yaml` must be `["../skills"]`

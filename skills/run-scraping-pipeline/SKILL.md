@@ -31,7 +31,9 @@ python3 -c "import yaml" 2>/dev/null || pip3 install pyyaml
 curl -s http://localhost:9222/json/version 2>&1 | head -1 | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
 ```
 
-If `NOT_RUNNING`: tell user to run `~/start-chrome.sh` first. Do not proceed.
+If `NOT_RUNNING`: tell user to run `bash start-chrome.sh` first. Do not proceed.
+
+**If Chrome is running but CDP is not responding** (`curl` returns empty): Chrome may be blocked by a macOS Keychain dialog (\"keychain cannot be found to store Chrome\"). Kill Chrome (`pkill -f \"Google Chrome\"`), verify `--use-mock-keychain` is in `start-chrome.sh`, and restart with `bash start-chrome.sh`. See `check-auth/references/chrome-profile.md` for details.
 
 ## Step 2: Read config
 
@@ -82,7 +84,11 @@ Total: N new jobs added. Dashboard: http://localhost:3000
 
 ### Greenhouse "For You" feed returns 0 jobs
 
-The Greenhouse scraper reads from the personalized "For You" feed at my.greenhouse.io. If the user hasn't set job preferences (titles, locations, remote filter) on their Greenhouse profile, the feed will be empty and the scraper will return 0 jobs. Tell the user to go to https://my.greenhouse.io and configure their job preferences, then re-scrape.
+Two failure modes:
+
+1. **Feed empty** — The personalized "For You" feed at my.greenhouse.io is empty. If the user hasn't set job preferences (titles, locations, remote filter) on their Greenhouse profile, the feed returns nothing. Tell the user to go to https://my.greenhouse.io and configure their job preferences, then re-scrape.
+
+2. **Cards found but "Profile filter: 0 relevant, 0 skipped"** — The scraper sees job cards on the page and counts them (e.g. "Found 11 cards"), but after filtering, both `relevant_rows` and `skip_rows` are empty. This means `collect_greenhouse()` returned rows where `url`, `title`, or `company` fields are empty/None — all three are required by the filter logic. The DOM extraction (`resultContainer()` and `textLines()` JS in `collect_greenhouse()`) likely broke due to a Greenhouse UI change. To debug, open my.greenhouse.io in Chrome, inspect card HTML structure. Fix the JavaScript extraction code in `scrape_greenhouse.py`.
 
 ### JobLeads auth check may pass but scraping still fails
 
@@ -118,6 +124,18 @@ Note: the script only accepts ONE `--run-file` per invocation. Run it once per o
 ### Sequential scraping is slow but reliable
 
 Each provider/location combo takes 15–90 seconds. The pipeline scripts use the same Chrome instance (CDP port 9222), so running multiple simultaneously may cause contention. Prefer sequential execution unless the user specifically requests parallel.
+
+### Do NOT reference `$HOME` or `Path.home()` in scripts
+
+The agent's terminal environment resolves `$HOME` to `/Users/zall/.hermes/profiles/interviewprep/home` (Hermes sandbox), NOT `/Users/zall/`. Any script using `$HOME` or `Path.home()` for Chrome profile paths will silently create/write to the wrong directory, and Chrome will start with an empty profile.
+
+**Fix:** Always use script-relative paths:
+- Bash: `SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"` then `"$SCRIPT_DIR/.chrome-profile"`
+- Python: `Path(__file__).resolve().parent.parent / ".chrome-profile"`
+
+This also makes the project open-source friendly — no absolute paths, no environment assumptions.
+
+See `check-auth/references/chrome-profile.md` for the full Chrome profile architecture.
 
 ## Examples
 
