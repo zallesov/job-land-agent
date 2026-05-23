@@ -51,7 +51,7 @@ print(json.dumps({'providers': active_providers, 'locations': locations}))
 ## Step 3: Determine scope
 
 Apply any overrides from the user's request:
-- Specific provider mentioned → use only that provider (if active)
+- Specific provider mentioned → use only that provider (must be present in config's `providers:` map and set to `true`; if missing entirely, see the "Provider not in config" pitfall below)
 - "all" → use all active providers
 
 ## Step 4: Run each provider's scraper, then ingest
@@ -61,11 +61,12 @@ Apply any overrides from the user's request:
 python3 scripts/scrape_greenhouse.py
 python3 scripts/scrape_jobleads.py
 python3 scripts/scrape_wellfound.py
-python3 scripts/scrape_sprout.py
+python3 scripts/scraping_pipeline.py --provider sprout
 python3 scripts/scraping_pipeline.py --provider hirify
 
-# After all scrapers finish, ingest all outputs:
+# After greenhouse/jobleads/wellfound finish, ingest their outputs:
 python3 scripts/ingest_provider_outputs.py --db jobs.db --all-latest
+# sprout and hirify use scraping_pipeline.py (ingest+enrich+screen inline)
 ```
 
 Skip scraper scripts for inactive providers. Capture stdout. Parse log lines for counts.
@@ -107,17 +108,41 @@ Both modes exit with code 10. Tell the user to log in at https://www.jobleads.co
 python3 -c "import sqlite3; db=sqlite3.connect('jobs.db'); db.execute(\"DELETE FROM jobs WHERE provider='jobleads'\"); db.commit(); print(f'Deleted')"
 ```
 
+### Provider not in config (not just disabled)
+
+If a provider the user asks for isn't listed in `config/user.yaml`'s `providers:` section *at all*, the config-read step (`active_providers = [p for p, enabled in d['providers'].items() if enabled]`) won't find it. The scraper script may still exist and accept `--provider <name>`, but it won't be in the active list.
+
+**Fix:** Add `provider_name: true` to the `providers:` section in `config/user.yaml`, then re-run.
+
 ### Hirify saved filters
 
 Hirify does not use `search_terms`, `locations`, or `work_style` to build searches. The user must create saved filters on https://hirify.me/ first. The scraper opens every saved filter and collects all paginated jobs.
+
+**Harmless warning noise:** The parser iterates filter indices and hits non-filter UI elements (notifications toggles, workflow preferences, etc.) at indices beyond the actual saved filters. Warnings like `Saved filter index not found: 29` through ~45 are normal and safe to ignore.
+
+### Pipeline inline enrichment failures
+
+`scripts/scraping_pipeline.py` runs enrichment inline as a post-ingest step via `scripts/pipeline/enrich_job.py`. When this step fails, jobs remain in the DB with `status='enrich_failed'` and the error string captured in the `comment` field.
+
+**'AI Jobs' filter overlay:** Saved filters with combobox/dropdown UI can trigger an HTML overlay that intercepts Playwright clicks, causing a 30s timeout. The scraper continues with other filters — this is a partial-data loss, not a blocker. See `references/hirify-provider.md` for details.
+
+### Wellfound scraping times out at larger scroll depths
+
+Wellfound can display 350+ job cards and the scraper scrolls through all of them. At 20+ scroll pages the 300s default timeout may expire before scraping finishes, resulting in partial data (jobs already collected in earlier scrolls are still in the DB from prior runs, but no new jobs are ingested in the aborted run).
+
+**Mitigation:** Either increase `timeout` to 600s in the `terminal()` call, or limit scroll depth in the scraper's Playwright code. The existing jobs in DB from previous successful runs are not affected.
+
+### Sprout "Malaga" resolves to Malaga, WA Australia
+
+Sprout's location autocomplete resolves "Malaga" to **Malaga, Western Australia** rather than Malaga, Spain. The scraper searches Malaga WA and finds Australian jobs (e.g. Peoplebank Australia, Canonical) which are irrelevant for a Spain-based search.
+
+**Root cause:** Sprout uses Google Places Autocomplete and "Malaga" without a country qualifier matches the Australian suburb first. The fix is to either use a more specific location string in the config (e.g. "Malaga, Spain" instead of just "Malaga") or manually select the correct region on Sprout's location picker.
 
 ### Timeout risk with many provider × location combos
 
 Running all combos in a single execute_code script will hit the 300s timeout when there are 6+ combos. For 4+ combos, run them as individual foreground `terminal()` calls (one per combo). For 8+ combos, consider using `terminal(background=true, notify_on_complete=true)` and polling with `process()`.
 
 ### Ingest script has no `--provider` flag — use `--run-file` for single-provider ingest
-
-The `ingest_provider_outputs.py` script does not support `--provider <name>`. When scraping a single provider, avoid `--all-latest` (which ingests ALL providers' latest output files, including stale runs from other providers). Instead, pass the specific output files:
 
 ```bash
 python3 scripts/ingest_provider_outputs.py --db jobs.db \

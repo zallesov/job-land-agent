@@ -10,26 +10,10 @@ description: Knows how to invoke the Sprout scraper script with CDP connection t
 ## Script
 
 ```
-cd /Users/zall/interviews && python3 scripts/scrape_sprout.py
+cd /Users/zall/interviews && python3 scripts/scraping_pipeline.py --provider sprout
 ```
 
-## Parameters
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| *(none required)* | — | Locations and titles read from `config/user.yaml` automatically |
-| `--titles <str...>` | config `search_terms` | Override: job titles to search (one search per title) |
-| `--cdp-url <url>` | `http://localhost:9222` | CDP endpoint |
-| `--date <YYYY-MM-DD>` | today | Output filename date stamp |
-| `--max-jobs <N>` | 0 (all) | Limit total jobs across all searches |
-
-Locations are resolved from `config/user.yaml` → `locations[]` → `country_code` (DE → berlin, ES → spain).
-
-## Output
-
-```
-outputs/sprout/runs/sprout_jobs_live_<date>_<location_slug>.json
-```
+Locations and titles read from `config/user.yaml` automatically. The pipeline handles scrape → dedup → ingest → enrich → screen inline.
 
 ## How It Works
 
