@@ -10,31 +10,12 @@ description: Knows how to invoke the WellFound scraper script with CDP connectio
 ## Script
 
 ```
-cd /Users/zall/interviews && python3 scripts/scrape_wellfound.py
+cd /Users/zall/interviews && python3 scripts/scraping_pipeline.py --provider wellfound
 ```
 
-## Parameters
+Locations, titles, and work style read from `config/user.yaml` automatically. The pipeline handles scrape → dedup → ingest → enrich → screen inline.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| *(none required)* | — | Locations, titles, and work style read from `config/user.yaml` automatically |
-| `--cdp-url <url>` | `http://localhost:9222` | CDP endpoint |
-| `--date <YYYY-MM-DD>` | today | Output filename date stamp |
-| `--skip-enrich` | off | Skip detail page visits (faster, no descriptions) |
-| `--max-jobs <N>` | 0 (all) | Limit jobs scraped |
-| `--no-filters` | off | Skip all UI filter application |
-
-**Location logic (config-driven, no CLI flag):** When `work_style.preferred` is `"remote"`, the scraper runs a single \"Europe\" search (broad remote region, no city picker needed). When non-remote, it iterates the cities from `config/user.yaml` → `locations[]` → `country_code` (DE → Berlin, ES → Spain). Filters (Remote, Full-Time, $100k+ salary) are applied via URL params and UI toggles.
-
-## Output
-
-```
-outputs/wellfound/runs/wellfound_jobs_live_<date>_<slug>.json
-```
-
-For remote mode: slug is `europe`. For non-remote: slug is `berlin` or `spain` (from config location keys).
-
-Each job object: `provider`, `company`, `title`, `url`, `applyUrl`, `description`, `location`, `country`, `postingDate`, `salaryRaw`, `equityRaw`, `skills`.
+**Location logic (config-driven):** When `work_style.preferred` is `"remote"`, the scraper runs a single \"Europe\" search. When non-remote, it iterates cities from `config/user.yaml` → `locations[]`. Filters (Remote, Full-Time, $100k+ salary) are applied via URL params and UI toggles.
 
 ## How It Works (6 Phases)
 
@@ -54,7 +35,7 @@ The Chrome profile at `.chrome-profile/` (inside the project dir) stores ALL ses
 - DataDome bot-detection cookie
 - Saved search configuration (roles, location, filters)
 
-**Pattern**: Update the saved search ONCE manually in the browser (add Remote Only, Salary $100k+, Full Time), then every future `scrape_wellfound.py` run inherits those filters automatically. No need to re-apply filters in the script each time — use `--no-filters` for speed.
+**Pattern**: Update the saved search ONCE manually in the browser (add Remote Only, Salary $100k+, Full Time), then every future pipeline run inherits those filters automatically via the Chrome profile.
 
 ## Pre-Flight Checklist
 

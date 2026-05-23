@@ -91,11 +91,11 @@ Hermes (supervisor, scheduler, router, notifier)
 | File | Role |
 |------|------|
 | `scripts/db.py` | SQLite access layer — all tables, indexes, helpers |
-| `scripts/ingest_provider_outputs.py` | Reads provider JSON artifacts, dedupes by URL, writes jobs + companies |
-| `scripts/tag_new_jobs.py` | Keyword-based light tags (role, seniority, AI, remote, salary) |
-| `scripts/research_job.py` | **DEPRECATED — DO NOT USE.** Calls Anthropic API directly — requires `ANTHROPIC_API_KEY` (not set on Zall's machine) and returns stale training-data facts instead of live research. Replaced by the `job-research` skill which uses local browser tools for real web research. This script is kept only for historical reference. |
+| `scripts/scraping_pipeline.py` | Unified pipeline: `--provider <name>` runs scrape → dedup → ingest → enrich → screen inline |
+| `scripts/providers/<name>/scrape_jobs.py` | Per-provider Playwright scraper (greenhouse, jobleads, wellfound, sprout, hirify) |
+| `scripts/pipeline/enrich_job.py` | Enriches a job by ID — fetches description, company info |
+| `scripts/pipeline/screen_job.py` | Screens a job by ID — produces `apply_verdict` + `relevance_score` |
 | `scripts/telegram_notify.py` | Sends via `hermes send --to telegram` |
-| `outputs/<provider>/runs/` | Normalized JSON artifacts per provider, per day |
 | `dashboard/` | Next.js 14 + better-sqlite3 — job list, detail pane, research trigger |
 | `docs/plans/` | Implementation plans 00–07 |
 

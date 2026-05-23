@@ -10,7 +10,7 @@ Instead, it shows a degraded anonymous search page where:
 - The "For You" personalized feed falls back to generic keyword search
 - Job detail pages show truncated/redacted descriptions
 
-## Detection methods in the scraper (scripts/scrape_jobleads.py)
+## Detection methods in the scraper (scripts/providers/jobleads/scrape_jobs.py)
 
 ### 1. URL-based (`is_auth_page`)
 Checks for login-page URL patterns:
@@ -48,4 +48,4 @@ is more expensive than a cookie check but could be added to check_auth.py as a
    ```bash
    python3 -c "import sqlite3; db=sqlite3.connect('jobs.db'); db.execute(\"DELETE FROM jobs WHERE provider='jobleads'\"); db.commit()"
    ```
-4. Re-run scraper: `python3 scripts/scrape_jobleads.py`
+4. Re-run scraper: `python3 scripts/scraping_pipeline.py --provider jobleads`

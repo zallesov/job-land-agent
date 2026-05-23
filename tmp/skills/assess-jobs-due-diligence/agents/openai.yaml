@@ -1,4 +1,0 @@
-interface:
-  display_name: "Assess Jobs Due Diligence"
-  short_description: "Research jobs and write assessment fields."
-  default_prompt: "Assess jobs in jobs_all.xlsx with due diligence research."

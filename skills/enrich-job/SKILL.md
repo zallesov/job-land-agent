@@ -168,6 +168,21 @@ UPDATE jobs SET
 WHERE id = <job_id>;
 ```
 
+## Recovering from pipeline enrich failures
+
+The pipeline's `scraping_pipeline.py` runs enrichment inline as a post-ingest step. When it fails (e.g. due to missing `run_agent` Hermes SDK), jobs are left in the DB with `status='enrich_failed'` and the error in the `comment` field. To recover:
+
+1. Query the failed jobs:
+   ```sql
+   SELECT id, url, title FROM jobs WHERE status='enrich_failed';
+   ```
+
+2. Re-run enrichment via this skill (Jina/browser fallback) for each job, or use this SQL-safe pattern in batch mode:
+   ```python
+   db.execute("UPDATE jobs SET status='new' WHERE status='enrich_failed'")
+   ```
+   Then kick off the batch enrichment workflow below.
+
 ## Pitfalls
 
 - **Jina rate limiting**: add 0.5s delay between batch calls
@@ -175,3 +190,4 @@ WHERE id = <job_id>;
 - **Jina control characters in JSON**: use `strict=False` when parsing
 - **Duplicate detection**: same URL with different query params (e.g. `?utm_source=Otta`) is the same job — the DB UNIQUE constraint on `url` may cause issues; strip query params before storing
 - **Remote scope**: when location info is visible (e.g. "Berlin; Stockholm", "Hybrid"), populate both `location` and `remote_scope` columns
+- **Pipeline enrichment vs manual enrichment are different code paths**: the pipeline's inline enrichment calls `scripts/pipeline/enrich_job.py` which uses `hermes_call()` (Hermes `run_agent` SDK). Manual enrichment using this skill uses Jina/browser. If the pipeline enrichment fails due to SDK issues, manual enrichment via this skill is a working workaround.

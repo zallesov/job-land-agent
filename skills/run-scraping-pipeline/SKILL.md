@@ -14,8 +14,9 @@ description: Run job scraping for one or all active providers. Reads config/user
 
 ## Execution Rules
 
-- Do NOT ask for confirmation. Execute immediately.
+- Do NOT ask for confirmation to run the scrape. Execute immediately.
 - On `AuthError`: stop that provider/location combo, tell user to run `/check-auth` first.
+- On ingest failure (UNIQUE constraint, DB error): report the error and ask the user what to do. **Do not suggest or perform DB data deletion.**
 - Report per run: scraped count / new after dedup / ingested / failures.
 
 ## Step 0: Prerequisites
@@ -54,22 +55,18 @@ Apply any overrides from the user's request:
 - Specific provider mentioned → use only that provider (must be present in config's `providers:` map and set to `true`; if missing entirely, see the "Provider not in config" pitfall below)
 - "all" → use all active providers
 
-## Step 4: Run each provider's scraper, then ingest
+## Step 4: Run each provider's scraper
 
 ```bash
-# For each active provider, run its scraper (reads config automatically):
-python3 scripts/scrape_greenhouse.py
-python3 scripts/scrape_jobleads.py
-python3 scripts/scrape_wellfound.py
+# All providers use the unified pipeline (scrape → dedup → ingest → enrich → screen):
+python3 scripts/scraping_pipeline.py --provider greenhouse
+python3 scripts/scraping_pipeline.py --provider jobleads
+python3 scripts/scraping_pipeline.py --provider wellfound
 python3 scripts/scraping_pipeline.py --provider sprout
 python3 scripts/scraping_pipeline.py --provider hirify
-
-# After greenhouse/jobleads/wellfound finish, ingest their outputs:
-python3 scripts/ingest_provider_outputs.py --db jobs.db --all-latest
-# sprout and hirify use scraping_pipeline.py (ingest+enrich+screen inline)
 ```
 
-Skip scraper scripts for inactive providers. Capture stdout. Parse log lines for counts.
+Skip inactive providers. Capture stdout. Parse log lines for counts.
 
 ## Step 5: Report results
 
@@ -91,7 +88,7 @@ Two failure modes:
 
 1. **Feed empty** — The personalized "For You" feed at my.greenhouse.io is empty. If the user hasn't set job preferences (titles, locations, remote filter) on their Greenhouse profile, the feed returns nothing. Tell the user to go to https://my.greenhouse.io and configure their job preferences, then re-scrape.
 
-2. **Cards found but "Profile filter: 0 relevant, 0 skipped"** — The scraper sees job cards on the page and counts them (e.g. "Found 11 cards"), but after filtering, both `relevant_rows` and `skip_rows` are empty. This means `collect_greenhouse()` returned rows where `url`, `title`, or `company` fields are empty/None — all three are required by the filter logic. The DOM extraction (`resultContainer()` and `textLines()` JS in `collect_greenhouse()`) likely broke due to a Greenhouse UI change. To debug, open my.greenhouse.io in Chrome, inspect card HTML structure. Fix the JavaScript extraction code in `scrape_greenhouse.py`.
+2. **Cards found but "Profile filter: 0 relevant, 0 skipped"** — The scraper sees job cards on the page and counts them (e.g. "Found 11 cards"), but after filtering, both `relevant_rows` and `skip_rows` are empty. This means `collect_greenhouse()` returned rows where `url`, `title`, or `company` fields are empty/None — all three are required by the filter logic. The DOM extraction (`resultContainer()` and `textLines()` JS in `collect_greenhouse()`) likely broke due to a Greenhouse UI change. To debug, open my.greenhouse.io in Chrome, inspect card HTML structure. Fix the JavaScript extraction code in `scripts/providers/greenhouse/scrape_jobs.py`.
 
 ### JobLeads auth check may pass but scraping still fails
 
@@ -142,15 +139,26 @@ Sprout's location autocomplete resolves "Malaga" to **Malaga, Western Australia*
 
 Running all combos in a single execute_code script will hit the 300s timeout when there are 6+ combos. For 4+ combos, run them as individual foreground `terminal()` calls (one per combo). For 8+ combos, consider using `terminal(background=true, notify_on_complete=true)` and polling with `process()`.
 
-### Ingest script has no `--provider` flag — use `--run-file` for single-provider ingest
+### Dedup uses `dedup_key`, DB uses UNIQUE on `url` — mismatch can crash ingest
 
-```bash
-python3 scripts/ingest_provider_outputs.py --db jobs.db \
-  --run-file outputs/greenhouse/runs/greenhouse_jobs_live_<date>_berlin.json \
-  --run-file outputs/greenhouse/runs/greenhouse_jobs_live_<date>_spain.json
+`scripts/pipeline/dedup.py` checks for duplicate `dedup_key` values in the DB to decide which scraped jobs are "new." But `scripts/pipeline/ingest.py` has a `UNIQUE` constraint on the `url` column in the `jobs` table. If a job has the same URL as an existing job but a *different* `dedup_key` (e.g. because the key construction changed between scraper versions), dedup passes it as "new" but ingest crashes with:
+
+```
+sqlite3.IntegrityError: UNIQUE constraint failed: jobs.url
 ```
 
-Note: the script only accepts ONE `--run-file` per invocation. Run it once per output file if you have multiple location files for the same provider. The second run will update the already-inserted rows rather than creating duplicates.
+**No data is lost** — the crash happens before the INSERT, so DB contents are unchanged. But the pipeline exits with code 1 and no new jobs from that provider are ingested.
+
+**Mitigation:** If this happens, report the crash and ask the user how they want to proceed. Never suggest or perform DB data deletion as a workaround.
+
+### Never delete DB data without the user's explicit, unambiguously affirmative command
+
+If scraping produces bad or overlapping data (wrong filters, corrupted auth, dedup mismatches), report the situation and ask "what should I do?" — do NOT offer "delete and re-scrape" as a choice in a clarify tool. The default response is to keep existing data as-is. Deletion is only appropriate when the user independently proposes it and states it clearly.
+
+This rule is the user's expressed hard boundary — violating it erodes trust. It applies to ALL providers, not just wellfound.
+
+
+
 
 ### Sequential scraping is slow but reliable
 

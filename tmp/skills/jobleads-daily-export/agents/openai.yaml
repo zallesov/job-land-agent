@@ -1,4 +1,0 @@
-interface:
-  display_name: "JobLeads Daily Export"
-  short_description: "Update a JobLeads jobs workbook from saved searches."
-  default_prompt: "Update my JobLeads jobs workbook from the configured searches."
