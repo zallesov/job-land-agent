@@ -5,29 +5,23 @@ import { JobDetail } from "./JobDetail";
 import { updateJobAction } from "../actions";
 import { Logo } from "./Logo";
 
-export const STATUS_COLORS: Record<string, string> = {
+export const PIPELINE_STATUS_COLORS: Record<string, string> = {
   new:            "bg-blue-900/60 text-blue-300",
-  interesting:    "bg-green-900/60 text-green-300",
-  not_interested: "bg-white/5 text-[var(--text-3)]",
-  researching:    "bg-yellow-900/60 text-yellow-300",
-  researched:     "bg-purple-900/60 text-purple-300",
-  draft_ready:    "bg-orange-900/60 text-orange-300",
-  applied:        "bg-indigo-900/60 text-indigo-300",
-  interviewing:   "bg-teal-900/60 text-teal-200",
-  rejected:       "bg-red-900/40 text-red-400",
-  archived:       "bg-white/5 text-[var(--text-3)]",
-  listed:         "bg-slate-900/60 text-slate-400",
+  enriched:       "bg-sky-900/60 text-sky-300",
+  screened:       "bg-emerald-900/60 text-emerald-300",
   enrich_failed:  "bg-red-900/20 text-red-600",
-  sanity_failed:  "bg-orange-900/20 text-orange-600",
+  screen_failed:  "bg-orange-900/20 text-orange-600",
 };
 
-const INTERVIEW_PILL: Record<string, { bg: string; color: string }> = {
-  "Applied":    { bg: "rgba(96,165,250,0.12)",  color: "#60a5fa" },
-  "In process": { bg: "rgba(45,212,191,0.12)",  color: "#2dd4bf" },
-  "Rejected":   { bg: "rgba(248,113,113,0.12)", color: "#f87171" },
-  "Offer":      { bg: "rgba(34,197,94,0.15)",   color: "#22c55e" },
-  "Landed":     { bg: "rgba(167,139,250,0.15)", color: "#a78bfa" },
+export const USER_STATUS_COLORS: Record<string, string> = {
+  interesting:     "bg-green-900/60 text-green-300",
+  not_interesting: "bg-white/5 text-[var(--text-3)]",
+  applied:         "bg-indigo-900/60 text-indigo-300",
+  rejected:        "bg-red-900/40 text-red-400",
+  interviewing:    "bg-teal-900/60 text-teal-200",
+  offer:           "bg-purple-900/60 text-purple-300",
 };
+
 
 const VERDICT_LEFT: Record<string, string> = {
   "Strong Apply":       "border-l-[var(--green)]",
@@ -51,10 +45,13 @@ export const PROVIDER_COLORS: Record<string, { bg: string; color: string }> = {
   hirify:     { bg: "rgba(56,189,248,0.13)",  color: "#38bdf8" },
 };
 
-const STATUS_PRIORITY: Record<string, number> = {
-  interviewing: 0, applied: 1, draft_ready: 2, interesting: 3,
-  researched: 4, new: 5, listed: 5.5, researching: 6, not_interested: 7, rejected: 8, archived: 9,
-  enrich_failed: 10, sanity_failed: 11,
+const USER_STATUS_PRIORITY: Record<string, number> = {
+  offer:           0,
+  interviewing:    1,
+  applied:         2,
+  interesting:     3,
+  not_interesting: 8,
+  rejected:        9,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,8 +66,8 @@ function sortJobs(jobs: any[], sortBy: "newest" | "score" | "status"): any[] {
     });
   }
   return arr.sort((a, b) => {
-    const ap = STATUS_PRIORITY[a.status] ?? 99;
-    const bp = STATUS_PRIORITY[b.status] ?? 99;
+    const ap = USER_STATUS_PRIORITY[a.user_status] ?? 5;
+    const bp = USER_STATUS_PRIORITY[b.user_status] ?? 5;
     if (ap !== bp) return ap - bp;
     const as_ = (a.relevance_score ?? -1) + (a.trustworthiness_score ?? -1);
     const bs_ = (b.relevance_score ?? -1) + (b.trustworthiness_score ?? -1);
@@ -130,6 +127,7 @@ export function JobListClient({
   const visibleJobs = sortJobs(
     jobs.filter((job: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (deletedIds.has(job.id)) return false;
+      if (verdictFilter === "_applied") return job.user_status === "applied";
       if (verdictFilter && job.apply_verdict !== verdictFilter) return false;
       return true;
     }),
@@ -141,7 +139,7 @@ export function JobListClient({
       {/* LEFT PANEL */}
       <div
         className="flex flex-col shrink-0 overflow-hidden"
-        style={{ width: 380, borderRight: "1px solid var(--border)" }}
+        style={{ width: 490, borderRight: "1px solid var(--border)" }}
       >
         {/* Header */}
         <div style={{ borderBottom: "1px solid var(--border)", padding: "10px 12px" }}
@@ -195,6 +193,7 @@ export function JobListClient({
             { label: "Apply",    value: "Strong Apply" },
             { label: "Caution",  value: "Apply with Caution" },
             { label: "Research", value: "Need Research" },
+            { label: "Applied",  value: "_applied" },
           ] as const).map(({ label, value }) => (
             <button key={label} onClick={() => setVerdictFilter(value)}
               className="text-xs px-2 py-0.5 rounded transition-colors"
@@ -213,8 +212,13 @@ export function JobListClient({
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {visibleJobs.map((job: any) => {
             const isSelected = selectedId === job.id;
-            const verdictBorder = VERDICT_LEFT[job.apply_verdict ?? ""] ?? "border-l-transparent";
+            const isApplied = job.user_status === "applied";
+            const verdictBorder = isApplied ? "border-l-[#4ade80]" : (VERDICT_LEFT[job.apply_verdict ?? ""] ?? "border-l-transparent");
             const verdictColor = VERDICT_LABEL[job.apply_verdict ?? ""] ?? "";
+            const rowBg = isSelected
+              ? (isApplied ? "rgba(34,197,94,0.12)" : "var(--surface-hi)")
+              : (isApplied ? "rgba(34,197,94,0.05)" : "transparent");
+            const rowHoverBg = isApplied ? "rgba(34,197,94,0.09)" : "var(--surface)";
             return (
               <button
                 key={job.id}
@@ -222,10 +226,10 @@ export function JobListClient({
                 className={`w-full text-left px-3 py-2.5 border-l-2 transition-colors ${verdictBorder}`}
                 style={{
                   borderBottom: "1px solid var(--border)",
-                  background: isSelected ? "var(--surface-hi)" : "transparent",
+                  background: rowBg,
                 }}
-                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--surface)"; }}
-                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = rowHoverBg; }}
+                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = isApplied ? "rgba(34,197,94,0.05)" : "transparent"; }}
               >
                 {/* Title */}
                 <div className="text-sm font-semibold truncate leading-tight mb-0.5"
@@ -272,25 +276,24 @@ export function JobListClient({
                     <span className="font-data text-xs" style={{ color: "var(--teal)" }}>T:{job.trustworthiness_score}</span>
                   )}
 
-                  {job.current_interview_status && job.current_interview_status !== "Not Applied" && INTERVIEW_PILL[job.current_interview_status] && (
-                    <span className="font-data text-xs px-1.5 py-px rounded font-medium"
-                      style={{
-                        background: INTERVIEW_PILL[job.current_interview_status].bg,
-                        color: INTERVIEW_PILL[job.current_interview_status].color,
-                        fontSize: 10,
-                      }}>
-                      {job.current_interview_status}
+{/* Pipeline status badge */}
+                  <span className={`ml-auto text-[10px] px-1.5 py-px rounded font-medium ${PIPELINE_STATUS_COLORS[job.pipeline_status] ?? "bg-white/5 text-[var(--text-3)]"}`}>
+                    {job.pipeline_status ?? "—"}
+                  </span>
+
+                  {/* User status badge — only if set */}
+                  {job.user_status && (
+                    <span className={`text-[10px] px-1.5 py-px rounded font-medium ${USER_STATUS_COLORS[job.user_status] ?? ""}`}>
+                      {job.user_status.replace(/_/g, " ")}
                     </span>
                   )}
-                  <span className="ml-auto text-xs px-1.5 py-px rounded"
-                    style={{
-                      background: "var(--surface-hi)",
-                      color: "var(--text-2)",
-                      border: "1px solid var(--border-hi)",
-                      fontSize: 10,
-                    }}>
-                    {job.status}
-                  </span>
+
+                  {/* Research badge — only if researched */}
+                  {job.research_status === "researched" && (
+                    <span className="text-[10px] px-1.5 py-px rounded font-medium bg-purple-900/40 text-purple-300">
+                      researched
+                    </span>
+                  )}
                 </div>
               </button>
             );
