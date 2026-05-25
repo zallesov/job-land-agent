@@ -3,8 +3,6 @@ import { useEffect, useState } from "react";
 import { CommandButton } from "./CommandButton";
 import { PROVIDER_COLORS } from "./JobList";
 
-const PIPELINE_STATUSES = new Set(["new","enriched","screened","enrich_failed","screen_failed"]);
-
 const USER_STATUSES = ["interesting","not_interesting","applied","rejected","interviewing","offer"];
 
 const USER_STATUS_LABELS: Record<string, string> = {
