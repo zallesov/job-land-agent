@@ -8,7 +8,6 @@ from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
 from scripts.providers.hirify.cdp_fallback import CdpPage
-from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 HIRIFY_BASE = "https://hirify.me"
@@ -33,7 +32,6 @@ def _normalize_raw_job(raw: dict) -> ShallowJob:
     title = (raw.get("title") or "").strip()
     company = (raw.get("company") or "").strip() or "Company hidden"
     url = _canonical_url(raw.get("url") or "")
-    relevant = is_relevant({"title": title})
     return ShallowJob(
         provider="hirify",
         title=title,
@@ -44,7 +42,7 @@ def _normalize_raw_job(raw: dict) -> ShallowJob:
         dedup_key=f"{company}::{title}",
         posting_date=None,
         salary_raw=(raw.get("salaryRaw") or None),
-        status="new" if relevant else "skip",
+        status="new",
     )
 
 
@@ -224,6 +222,7 @@ def _scrape_jobs_with_playwright(cdp_url: str) -> list[ShallowJob]:
         browser = pw.chromium.connect_over_cdp(cdp_url)
         ctx = browser.contexts[0]
         page = ctx.new_page()
+        page.bring_to_front()
         try:
             return _scrape_jobs_from_page(page)
         finally:

@@ -220,7 +220,7 @@ export function createScrapeCommand(jobId: number, url: string): { commandId: nu
 export function createResearchCommand(jobId: number): { commandId: number; existing: boolean } {
   const db = getDb();
   const existing = db.prepare(
-    "SELECT id FROM agent_commands WHERE command_type = 'research_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
+    "SELECT id FROM agent_commands WHERE command_type = 'research_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ? AND created_at >= datetime('now', '-30 minutes')"
   ).get(jobId) as { id: number } | undefined;
   if (existing) return { commandId: existing.id, existing: true };
   const result = db.prepare(

@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from .types import HermesResult
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -11,12 +13,7 @@ CV_PATH = PROJECT_ROOT / "cv_master_content.md"
 
 
 def _find_hermes_venv_python() -> Path | None:
-    """Locate the Hermes venv Python regardless of $HOME sandboxing.
-
-    Hermes sandboxes $HOME inside its agent runs, so Path.home() is wrong.
-    Instead read the hermes wrapper script to get the absolute venv path.
-    """
-    # Try reading the wrapper script (which contains the absolute venv path)
+    """Locate the Hermes venv Python regardless of $HOME sandboxing."""
     try:
         which = subprocess.run(["which", "hermes"], capture_output=True, text=True)
         wrapper = Path(which.stdout.strip())
@@ -29,7 +26,6 @@ def _find_hermes_venv_python() -> Path | None:
                     return py
     except Exception:
         pass
-    # Absolute fallback (known install location)
     candidate = Path("/Users/zall/.hermes/hermes-agent/venv/bin/python")
     return candidate if candidate.exists() else None
 
@@ -38,27 +34,72 @@ _HERMES_VENV_PYTHON = _find_hermes_venv_python()
 _HERMES_DIR = _HERMES_VENV_PYTHON.parent.parent.parent if _HERMES_VENV_PYTHON else None
 
 
+def _resolve_hermes_model() -> tuple[str, str]:
+    """Read model.default and model.provider from the joblandagent profile config."""
+    for config_path in [
+        _PROFILE_HOME / "config.yaml",
+        Path.home() / ".hermes" / "config.yaml",
+    ]:
+        if config_path.exists():
+            try:
+                data = yaml.safe_load(config_path.read_text()) or {}
+                m = data.get("model", {})
+                model = str(m.get("default", ""))
+                provider = str(m.get("provider", ""))
+                if model:
+                    return model, provider
+            except Exception:
+                pass
+    return "", ""
+
+
 def build_prompt(skill: str, context: dict) -> str:
     parts = [f"Use skill {skill}."]
     for k, v in context.items():
         parts.append(f"{k}: {v}.")
+    parts.append(
+        "Respond with ONLY a single JSON object on one line, "
+        "no markdown fences, no surrounding text."
+    )
     return " ".join(parts)
+
+
+HERMES_PROFILE = "joblandagent"
+_PROFILE_HOME = Path.home() / ".hermes" / "profiles" / HERMES_PROFILE
+
+
+def _profile_home() -> Path | None:
+    return _PROFILE_HOME if _PROFILE_HOME.exists() else None
 
 
 def _run_via_venv(prompt: str, timeout_sec: int) -> str:
     """Run Hermes agent using its own venv Python to avoid dep conflicts."""
+    model, provider = _resolve_hermes_model()
     script = f"""
 import sys
 sys.path.insert(0, {str(_HERMES_DIR)!r})
 from run_agent import AIAgent
-agent = AIAgent(quiet_mode=True, skip_context_files=True, max_iterations=10)
+agent = AIAgent(
+    quiet_mode=True,
+    skip_context_files=True,
+    max_iterations=10,
+    model={model!r},
+    provider={provider!r},
+)
 result = agent.chat({prompt!r})
 print(result)
 """
+    env = None
+    ph = _profile_home()
+    if ph:
+        import os
+        env = {**os.environ, "HERMES_HOME": str(ph)}
+
     proc = subprocess.run(
         [str(_HERMES_VENV_PYTHON), "-c", script],
         capture_output=True, text=True, timeout=timeout_sec,
         cwd=str(PROJECT_ROOT),
+        env=env,
     )
     return proc.stdout + proc.stderr
 

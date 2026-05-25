@@ -88,6 +88,7 @@ config/cv.md
 config/resume.pdf
 
 # Hermes profile personal data
+hermes-profile/config.yaml
 hermes-profile/auth.json
 hermes-profile/.env
 hermes-profile/.hermes_history

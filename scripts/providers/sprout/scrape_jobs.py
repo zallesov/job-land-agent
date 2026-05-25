@@ -6,7 +6,6 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
-from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
@@ -46,22 +45,22 @@ def search_jobs(page, title: str, location: str) -> bool:
         if title_input.count() == 0:
             title_input = page.locator('input').first
         title_input.click()
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(100)
         title_input.fill("")
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(100)
         title_input.fill(title)
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(100)
         page.keyboard.press("Escape")
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(100)
 
         page.evaluate("""() => {
             const input = document.querySelector('input[placeholder*="Anywhere"], input[placeholder*="Location"]');
             if (input) input.focus();
         }""")
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(100)
         page.keyboard.press("Meta+a")
         page.keyboard.type(location, delay=50)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(600)
 
         clicked = page.evaluate(f"""(loc) => {{
             const opts = document.querySelectorAll('[role="option"]');
@@ -75,10 +74,10 @@ def search_jobs(page, title: str, location: str) -> bool:
         }}""")
         if clicked:
             print(f"    Location set to: {clicked}", flush=True)
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(200)
 
         page.locator('button:has-text("Search")').first.click()
-        page.wait_for_timeout(4000)
+        page.wait_for_timeout(1500)
         return True
     except Exception as e:
         print(f"  [WARN] search_jobs failed: {e}", flush=True)
@@ -100,10 +99,40 @@ def scroll_to_load_all(page, max_scrolls: int = 20) -> int:
         else:
             no_new_count = 0
             last_count = current_count
-        page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
-        page.wait_for_timeout(2000)
-    page.evaluate("() => window.scrollTo(0, 0)")
-    page.wait_for_timeout(500)
+        # Scroll the cards list container, not the window
+        page.evaluate("""() => {
+            const card = document.querySelector('[data-slot="card"]');
+            if (card) {
+                let el = card.parentElement;
+                while (el && el !== document.body) {
+                    const s = window.getComputedStyle(el);
+                    if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
+                        el.scrollTop = el.scrollHeight;
+                        return;
+                    }
+                    el = el.parentElement;
+                }
+            }
+            window.scrollTo(0, document.body.scrollHeight);
+        }""")
+        page.wait_for_timeout(600)
+    # Scroll back to top of the same container
+    page.evaluate("""() => {
+        const card = document.querySelector('[data-slot="card"]');
+        if (card) {
+            let el = card.parentElement;
+            while (el && el !== document.body) {
+                const s = window.getComputedStyle(el);
+                if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
+                    el.scrollTop = 0;
+                    return;
+                }
+                el = el.parentElement;
+            }
+        }
+        window.scrollTo(0, 0);
+    }""")
+    page.wait_for_timeout(200)
     return last_count
 
 
@@ -127,65 +156,48 @@ def collect_card_summaries(page) -> list[dict]:
     }""")
 
 
-def open_card_and_get_url(page, card_index: int) -> str | None:
+def click_card_and_get_job_url(page, card_index: int) -> str | None:
     try:
         cards = page.locator('[data-slot="card"]')
         if cards.count() <= card_index:
             return None
-
         cards.nth(card_index).click()
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(300)
 
-        url = page.evaluate("""() => {
-            const links = document.querySelectorAll('a[href]');
-            for (const a of links) {
+        # Try reading href directly from panel — no navigation needed
+        direct_url = page.evaluate("""() => {
+            for (const a of document.querySelectorAll('a[href]')) {
                 const h = a.getAttribute('href');
-                if (h && !h.includes('usesprout') && !h.includes('google') &&
-                    !h.includes('stripe') && !h.includes('intercom') &&
-                    h.startsWith('http')) {
+                if (h && h.startsWith('http') &&
+                    !h.includes('usesprout') && !h.includes('google') &&
+                    !h.includes('stripe') && !h.includes('intercom')) {
                     return h;
                 }
             }
             return null;
         }""")
+        if direct_url:
+            return direct_url
 
-        if url and "usesprout.com" not in url:
-            return url
-
-        vo_btn = page.locator('button:has-text("View Original")').first
-        if vo_btn.count() == 0:
-            vo_btn = page.locator('a:has-text("View Original")').first
-        if vo_btn.count() == 0:
-            return None
-
-        page.evaluate("""() => {
-            const buttons = document.querySelectorAll('button');
-            for (const b of buttons) {
-                if (b.innerText.includes('View Original')) { b.click(); return true; }
-            }
-            return false;
-        }""")
-
-        context = page.context
-        pages_before = {p.url for p in context.pages}
-        original_url = page.url
-
-        page.wait_for_timeout(2000)
-        for p in context.pages:
-            if p.url not in pages_before and "usesprout.com" not in p.url:
-                found = p.url
-                try:
-                    p.close()
-                except Exception:
-                    pass
-                return found
-
-        page.wait_for_timeout(1000)
-        if page.url != original_url and "usesprout.com" not in page.url:
-            found = page.url
-            page.go_back(wait_until="domcontentloaded", timeout=10000)
-            page.wait_for_timeout(2000)
-            return found
+        # Intercept new tab from View Original — close immediately after URL grab
+        try:
+            with page.context.expect_page(timeout=3000) as new_page_info:
+                page.evaluate("""() => {
+                    for (const el of document.querySelectorAll('button, a')) {
+                        if (el.innerText.includes('View Original')) { el.click(); return; }
+                    }
+                }""")
+            new_page = new_page_info.value
+            try:
+                new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
+            job_url = new_page.url
+            new_page.close()
+            if job_url and "usesprout.com" not in job_url:
+                return job_url
+        except Exception:
+            pass
 
         return None
     except Exception as e:
@@ -195,7 +207,6 @@ def open_card_and_get_url(page, card_index: int) -> str | None:
 
 def collect_sprout(page, titles: list[str], location: str, country: str,
                    db_path: str | None = None) -> list[dict]:
-    seen_urls: set[str] = set()
     all_jobs: list[dict] = []
 
     known_keys = _known_dedup_keys(db_path) if db_path else set()
@@ -230,32 +241,13 @@ def collect_sprout(page, titles: list[str], location: str, country: str,
                 print(f"    [skip] {summary['company'][:20]} - {summary['title'][:50]} (in DB)", flush=True)
                 continue
 
-            if not is_relevant({"title": summary["title"]}):
-                all_jobs.append({
-                    "provider": "sprout",
-                    "company": summary["company"],
-                    "title": summary["title"],
-                    "url": f"urn:skip:sprout:{summary['company']}::{summary['title']}",
-                    "location": summary.get("location", ""),
-                    "country": country,
-                    "_skip": True,
-                    "_dup_key": dup_key,
-                })
-                continue
-
             print(f"    [{len(all_jobs)+1}] {summary['company'][:20]} - {summary['title'][:50]}", flush=True)
-            original_url = open_card_and_get_url(page, i)
-
-            if original_url and original_url in seen_urls:
-                continue
-            if original_url:
-                seen_urls.add(original_url)
-
+            job_url = click_card_and_get_job_url(page, i)
             all_jobs.append({
                 "provider": "sprout",
                 "company": summary["company"],
                 "title": summary["title"],
-                "url": original_url or f"{SPROUT_BASE}/jobs?view=board",
+                "url": job_url or f"{SPROUT_BASE}/jobs?view=board",
                 "location": summary.get("location", ""),
                 "country": country,
                 "postingDate": summary.get("date", ""),
@@ -280,16 +272,17 @@ def scrape_jobs(
         return []
     search_terms = titles or cfg.get("search_terms") or DEFAULT_TITLES
 
-    seen_urls: set[str] = set()
+    seen_dedup: set[str] = set()
     all_raw: list[dict] = []
 
     with sync_playwright() as pw:
         browser = pw.chromium.connect_over_cdp(cdp_url)
         ctx = browser.contexts[0]
         page = ctx.new_page()
+        page.bring_to_front()
         try:
             page.goto(f"{SPROUT_BASE}/jobs?view=board", wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(500)
             for location in locations:
                 rows = collect_sprout(
                     page,
@@ -299,8 +292,9 @@ def scrape_jobs(
                     db_path=db_path,
                 )
                 for r in rows:
-                    if r.get("url") and r["url"] not in seen_urls:
-                        seen_urls.add(r["url"])
+                    key = f"{r['company']}::{r['title']}"
+                    if key not in seen_dedup:
+                        seen_dedup.add(key)
                         all_raw.append(r)
         finally:
             page.close()
@@ -309,7 +303,6 @@ def scrape_jobs(
     for r in all_raw:
         if not r.get("title") or not r.get("company"):
             continue
-        relevant = is_relevant({"title": r["title"]})
         j = ShallowJob(
             provider="sprout",
             title=r["title"],
@@ -320,7 +313,7 @@ def scrape_jobs(
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salaryRaw") or None,
-            status="new" if relevant else "skip",
+            status="new",
         )
         jobs.append(j)
     return jobs

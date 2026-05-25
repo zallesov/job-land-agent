@@ -21,6 +21,7 @@ def check_auth(cdp_url: str) -> None:
         browser = pw.chromium.connect_over_cdp(cdp_url)
         ctx = browser.contexts[0]
         page = ctx.new_page()
+        page.bring_to_front()
         try:
             ok = wait_for_auth(page, "sprout", CHECK_URL, _is_auth_page)
         finally:

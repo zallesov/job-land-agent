@@ -50,9 +50,30 @@ export async function POST(req: NextRequest) {
     const projectRoot = path.resolve(process.cwd(), "..");
     const child = spawn(
       HERMES,
-      ["--yolo", "--skills", cfg.skill, "-z", prompt],
+      ["-p", "joblandagent", "--yolo", "--skills", cfg.skill, "-z", prompt],
       { detached: true, stdio: ["ignore", logFd, logFd], cwd: projectRoot }
     );
+
+    const markFailed = (msg: string) => {
+      try {
+        getDb().prepare(
+          "UPDATE agent_commands SET status='failed', error=?, finished_at=datetime('now') WHERE id=?"
+        ).run(msg, commandId);
+      } catch { /* db may be gone on hot reload */ }
+    };
+
+    child.on("error", (err) => {
+      markFailed(`Failed to start Hermes: ${err.message}. Start the Hermes gateway: hermes -p joblandagent`);
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        markFailed(
+          `Hermes exited immediately (code ${code ?? "signal"}) — Hermes gateway may not be running. Start it: hermes -p joblandagent`
+        );
+      }
+    });
+
     child.unref();
   }
   return NextResponse.json({ commandId, existing });

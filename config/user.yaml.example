@@ -37,5 +37,17 @@ providers:
   sprout: false
   hirify: false
 
+# Company/role preferences — used by screen-job and job-research for Apply/Skip decisions
+# Free text. Examples: "no fintech, no adtech", "IC only, no management", "startups only"
+job_preferences: ""
+
+# Spoken languages — used to filter roles requiring languages the user doesn't speak
+# Free text. Example: "English (fluent), German (B2), Russian (native)"
+languages: ""
+
+# Desired salary range — used during screening to flag underpaid roles
+# Free text. Example: "€120k–150k", "$150k+", "140–180K EUR"
+desired_salary: ""
+
 # SQLite database path (relative to repo root)
 db_path: "jobs.db"

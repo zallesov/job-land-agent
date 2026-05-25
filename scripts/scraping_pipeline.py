@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.pipeline.dedup import dedup_jobs
 from scripts.pipeline.ingest import ingest_jobs
 from scripts.pipeline.enrich_job import enrich_job
-from scripts.pipeline.screen_job import screen_job
+from scripts.pipeline.screen_jobs_batch import screen_jobs_batch
 from scripts.pipeline.notify import send_daily_digest
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -68,18 +68,19 @@ def run(
 
     enrich_failures: list[tuple[int, str]] = []
     enriched_ids: list[int] = []
-    for job_id in job_ids:
-        result = enrich_job(job_id, db_path=db_path)
+    for i, job_id in enumerate(job_ids, 1):
+        print(f"[enrich] {i}/{len(job_ids)} job_id={job_id}", flush=True)
+        result = enrich_job(job_id, db_path=db_path, cdp_url=cdp_url)
         if result.success:
+            title = (result.data.get("title") or "")[:60]
+            print(f"[enrich] OK  job_id={job_id}  title={title!r}", flush=True)
             enriched_ids.append(job_id)
         else:
+            print(f"[enrich] FAIL  job_id={job_id}  error={result.error}", flush=True)
             enrich_failures.append((job_id, result.error or "unknown"))
 
-    screen_failures: list[tuple[int, str]] = []
-    for job_id in enriched_ids:
-        result = screen_job(job_id, db_path=db_path)
-        if not result.success:
-            screen_failures.append((job_id, result.error or "unknown"))
+    print(f"[screen] screening {len(enriched_ids)} jobs (up to 5 parallel)", flush=True)
+    _, screen_failures = screen_jobs_batch(enriched_ids, db_path=db_path, max_workers=5)
 
     send_daily_digest(enrich_failures=enrich_failures, screen_failures=screen_failures)
 

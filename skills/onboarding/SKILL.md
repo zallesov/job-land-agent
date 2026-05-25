@@ -26,9 +26,10 @@ Say:
 > I'm your autonomous job search assistant. Here's what I do:
 > 1. **Scrape** job boards (Greenhouse, JobLeads, Wellfound, Sprout, Hirify) on schedule
 > 2. **Enrich** each listing: extract salary, apply URL, full description
-> 3. **Sanity-check** postings against your CV — filter out mismatches
+> 3. **Screen** postings against your CV — filter out mismatches, score and rank
 > 4. **Research** promising companies: funding, Glassdoor, red flags, fit score
 > 5. **Fill** application forms in Chrome — you review and submit
+> 6. **Dashboard** at `http://localhost:3000` — browse, filter, and manage all jobs in one place
 >
 > Let's get you set up. I'll ask a few questions and write your config file.
 
@@ -115,21 +116,51 @@ Map answer to `preferred: remote | hybrid | onsite` and `willing_to_relocate: tr
 
 ---
 
-## Step 5.5: Ask for free-text user preferences
+## Step 5.5: Ask for job preferences
 
-After work style, ask:
+After work style, ask the first open preference question:
 
-> Do you have any additional preferences for your job search? This is a free-text field — anything that doesn't fit in the structured fields above.
+> What are your preferences for the kind of company and role you're looking for?
 >
-> Examples:
-> - "I am looking for roles as Individual Contributor, in adTech startup"
-> - "I'm only considering stable companies, no startups"
-> - "Prefer B2B SaaS, no crypto/blockchain"
-> - "Must be EU timezone, no US hours"
+> Answer freely — anything goes. Some things you might mention:
+> - Startup vs enterprise (e.g. "only early-stage startups", "no startups, prefer stable scale-ups")
+> - Industries to avoid or prefer (e.g. "no fintech, no adtech", "love climate tech")
+> - IC vs management (e.g. "Individual Contributor only, no people management")
+> - Company culture or values ("remote-first culture", "no on-call rotation")
+> - Deal-breakers ("no equity-only comp", "no US timezone overlap required")
 >
-> You can leave this blank if you don't have specific preferences.
+> Leave blank if you have no specific preferences.
 
-Collect the raw text. Write as-is to `user_preferences` in config. If the user leaves it blank, set to `""`.
+Collect the raw text. Save as `job_preferences` in config. If blank, set to `""`.
+
+---
+
+## Step 5.6: Ask for languages
+
+Ask:
+
+> What languages do you speak, and at what level?
+>
+> Examples: "English (fluent), German (B2), Russian (native)", "English and Spanish only"
+>
+> This helps filter out roles that require a language you don't speak.
+
+Collect the raw text. Save as `languages` in config. If blank, set to `""`.
+
+---
+
+## Step 5.7: Ask for desired salary
+
+Ask:
+
+> What is your desired salary range?
+>
+> Examples: "€120k–150k", "$150k+", "€100k minimum", "140–180K EUR"
+>
+> This will be used during screening to flag roles that are clearly underpaid.
+> Leave blank if you have no hard requirement.
+
+Collect raw text. Save as `desired_salary` in config. If blank, set to `""`.
 
 ---
 
@@ -200,7 +231,9 @@ providers:
   wellfound: false
   sprout: false
   hirify: false
-user_preferences: "<free-text preferences or empty>"
+job_preferences: "<company/role preferences or empty>"
+languages: "<spoken languages or empty>"
+desired_salary: "<salary range or empty>"
 db_path: jobs.db
 ```
 
@@ -228,6 +261,73 @@ Then invoke the `check-auth` skill:
 
 ---
 
+## Step 9.3: Log in to research sites (mandatory)
+
+Say:
+
+> Now let's log in to the research sites. These sessions are **required** for company research — without them, Glassdoor, LinkedIn employee data, and Crunchbase funding info will all fail silently.
+>
+> I'll open each site in Chrome. Log in, then tell me "done" before I move to the next.
+
+Open each site in sequence and wait for the user to confirm login before proceeding:
+
+### LinkedIn
+
+```python
+browser_navigate(url="https://www.linkedin.com/login")
+```
+
+Say: "Log into LinkedIn, then say **done**."
+
+Wait for "done" / "logged in" / "go".
+
+Verify session by navigating to feed:
+
+```python
+browser_navigate(url="https://www.linkedin.com/feed/")
+```
+
+Take a snapshot and confirm the feed is visible (not a login page). If still on login, ask user to try again.
+
+### Glassdoor
+
+```python
+browser_navigate(url="https://www.glassdoor.com/profile/login_input.htm")
+```
+
+Say: "Log into Glassdoor, then say **done**."
+
+Wait for "done".
+
+Verify by navigating to `https://www.glassdoor.com/` and confirming user is logged in (profile icon visible, not a sign-up prompt).
+
+### Crunchbase
+
+```python
+browser_navigate(url="https://www.crunchbase.com/login")
+```
+
+Say: "Log into Crunchbase, then say **done**."
+
+Wait for "done".
+
+Verify by navigating to `https://www.crunchbase.com/` and checking the user avatar is present.
+
+### Summary
+
+After all three:
+
+```
+Research site sessions:
+  LinkedIn    ✅ logged in
+  Glassdoor   ✅ logged in
+  Crunchbase  ✅ logged in
+```
+
+For any that failed: show the login URL again and prompt the user to retry. Do not proceed to Step 9.5 until all three are confirmed — these sessions are mandatory for company research.
+
+---
+
 ## Step 9.5: Explain Chrome profile separation
 
 After auth checks pass, optionally mention:
@@ -248,7 +348,7 @@ Say:
 > | Add a specific job | Paste any job URL in this chat |
 > | Research a job | "research job 42" |
 > | Apply to a job | "apply to job 42" |
-> | View dashboard | http://localhost:3000 (run `cd dashboard && npm run dev`) |
+> | View dashboard | "open dashboard" or `/run-dashboard` |
 > | Re-check auth | "/check-auth" |
 >
 > Type **"run scraping"** to kick off your first pipeline run!

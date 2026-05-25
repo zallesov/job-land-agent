@@ -54,17 +54,22 @@ Auth check results:
   wellfound   ✅ authenticated
 ```
 
-## Step 4: For each failed provider
+## Step 4: For each failed provider — OR when user says "let me log in"
 
-Tell the user:
+**Do NOT tell the user to navigate to the login page themselves.** Proactively navigate there in the visible Chrome window:
 
-> Open the Chrome window (run `bash start-chrome.sh` if not running), navigate to <provider login URL>, log in manually, then run `/check-auth` again to verify.
+```python
+browser_navigate(url="<provider login URL>")
+```
+
+The user will see the login form and fill it in. Wait for them to say "go" / "done" before continuing.
 
 Provider login URLs:
 - **Greenhouse:** https://my.greenhouse.io/users/sign_in
 - **JobLeads:** https://www.jobleads.com/login
 - **Wellfound:** https://wellfound.com/login
 - **Sprout:** https://app.usesprout.com/login
+- **Hirify:** https://hirify.me/login
 
 ## Pitfall: Session loss after improper Chrome shutdown
 
@@ -83,6 +88,10 @@ JobLeads `check_auth.py` only verifies the session cookie is present — it cann
 2. **Anonymous mode** — the session loads results normally but every company name shows as "Solo para miembros registrados". The scraper's `is_unauthenticated()` content-based check catches this. This mode is invisible to cookie-only checks because the session looks valid but lacks the authenticated user's profile data.
 
 Both modes cause `check-auth` to report ✅ but the scraper will exit with code 10. If scraping fails for JobLeads despite a passing auth check, have the user re-login at https://www.jobleads.com/login and re-run. See `references/jobleads-auth.md` for full detection patterns.
+
+## CRITICAL: Visible Chrome
+
+Auth checks open CDP pages via `ctx.new_page()`. `page.bring_to_front()` must be called so the user sees the tab. See `job-pipeline` skill's `references/chrome-visibility.md`.
 
 ## Chrome Pre-Flight
 

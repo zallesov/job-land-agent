@@ -49,10 +49,15 @@ cp ~/your-cv.md config/cv.md
 ```bash
 # Point Hermes at the profile in this repo:
 hermes --profile ./hermes-profile
-# Then edit hermes-profile/config.yaml:
-#   model.api_key: <your LLM provider API key>
-#   (skills.external_dirs is already set to ["../skills"])
 ```
+
+In another terminal, set your model API key in your local Hermes profile:
+
+```bash
+hermes --profile ./hermes-profile config set model.api_key "<your LLM provider API key>"
+```
+
+Do not commit API keys or your local `hermes-profile/config.yaml`. Keep that file untracked and local to your machine. `skills.external_dirs` should be set to `["../skills"]`, so Hermes loads the project skills from the repo-level `skills/` directory.
 
 **4. Set up Telegram (optional but recommended)**
 

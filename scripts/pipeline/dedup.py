@@ -39,8 +39,23 @@ def dedup_jobs(jobs: list[ShallowJob], db_path: str = _DEFAULT_DB) -> list[Shall
             }
     finally:
         con.close()
+
+    # Also dedup within the batch itself (two scraped jobs may share a key)
+    seen_keys: set[str] = set()
+    seen_urls: set[str] = set()
+    deduped: list[ShallowJob] = []
+    for j in jobs:
+        key_dup = j.dedup_key and j.dedup_key in seen_keys
+        url_dup = j.url and j.url in seen_urls
+        if not key_dup and not url_dup:
+            if j.dedup_key:
+                seen_keys.add(j.dedup_key)
+            if j.url:
+                seen_urls.add(j.url)
+            deduped.append(j)
+
     return [
         j
-        for j in jobs
+        for j in deduped
         if j.dedup_key not in existing_dedup_keys and j.url not in existing_urls
     ]

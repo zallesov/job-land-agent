@@ -27,7 +27,9 @@ export function CommandButton({ jobId, commands, onDone, compact = false }: {
   const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latest = commands[0] ?? null;
-  const canTrigger = !latest || !["pending", "running"].includes(latest.status);
+  const isStale = latest && ["pending", "running"].includes(latest.status) &&
+    new Date(latest.created_at + "Z").getTime() < Date.now() - 30 * 60 * 1000;
+  const canTrigger = !latest || !["pending", "running"].includes(latest.status) || !!isStale;
 
   async function triggerResearch() {
     setTriggering(true);

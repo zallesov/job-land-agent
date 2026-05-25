@@ -93,7 +93,7 @@ export function JobListClient({
   const [verdictFilter, setVerdictFilter] = useState<string | null>(null);
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hasActive = jobs.some((j: any) => j.is_researching || j.is_scraping);
+  const hasActive = jobs.some((j: any) => j.is_scraping);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -261,8 +261,6 @@ export function JobListClient({
                 <div className="flex items-center gap-2">
                   {job.is_scraping ? (
                     <span className="text-xs animate-pulse" style={{ color: "var(--blue)" }}>⟳ scraping</span>
-                  ) : job.is_researching ? (
-                    <span className="text-xs animate-pulse" style={{ color: "var(--amber)" }}>⟳ researching</span>
                   ) : job.apply_verdict ? (
                     <span className={`text-xs font-data font-medium ${verdictColor}`}>
                       {job.apply_verdict === "Apply with caution" ? "Caution" : job.apply_verdict}
