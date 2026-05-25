@@ -4,15 +4,15 @@ import path from "path";
 
 const DB_PATH = path.resolve(process.cwd(), "../jobs.db");
 
-let _db: Database.Database | null = null;
+const g = global as typeof global & { _db?: Database.Database };
 
 export function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(DB_PATH, { readonly: false });
-    _db.pragma("foreign_keys = ON");
-    _db.pragma("journal_mode = WAL");
+  if (!g._db) {
+    g._db = new Database(DB_PATH, { readonly: false });
+    g._db.pragma("foreign_keys = ON");
+    g._db.pragma("journal_mode = WAL");
   }
-  return _db;
+  return g._db;
 }
 
 export type Job = {
