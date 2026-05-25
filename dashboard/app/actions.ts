@@ -32,7 +32,7 @@ export async function addManualJobAction(formData: FormData) {
 
 export async function updateJobAction(
   jobId: number,
-  fields: { status?: string; comment?: string; current_interview_status?: string }
+  fields: { user_status?: string; comment?: string }
 ) {
   updateJobWorkflowFields(jobId, fields);
   revalidatePath("/");

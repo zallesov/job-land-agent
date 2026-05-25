@@ -24,9 +24,11 @@ export type Job = {
   location: string | null;
   country: string | null;
   remote_scope: string | null;
-  status: string;
+  status: string;               // legacy — still in DB, kept for compat
+  pipeline_status: string;      // new
+  user_status: string | null;   // new
+  research_status: string | null; // new
   comment: string | null;
-  current_interview_status: string | null;
   first_seen: string;
   last_seen: string;
   company_id: number | null;
@@ -76,7 +78,8 @@ export type AgentCommand = {
 };
 
 export type JobFilters = {
-  status?: string;
+  status?: string;           // maps to pipeline_status
+  user_status?: string;      // new
   provider?: string;
   country?: string;
   remote_scope?: string;
@@ -99,12 +102,13 @@ export function listJobs(filters: JobFilters = {}): (Job & {
   ];
   const params: unknown[] = [];
 
-  if (filters.status) { conditions.push("j.status = ?"); params.push(filters.status); }
+  if (filters.status) { conditions.push("j.pipeline_status = ?"); params.push(filters.status); }
+  if (filters.user_status) { conditions.push("j.user_status = ?"); params.push(filters.user_status); }
   if (filters.provider) { conditions.push("j.provider = ?"); params.push(filters.provider); }
   if (filters.country) { conditions.push("j.country = ?"); params.push(filters.country); }
   if (filters.remote_scope) { conditions.push("j.remote_scope = ?"); params.push(filters.remote_scope); }
   if (filters.unresearched) { conditions.push("ja.id IS NULL"); }
-  if (filters.new_only) { conditions.push("j.status = 'new'"); }
+  if (filters.new_only) { conditions.push("j.pipeline_status = 'new'"); }
   if (filters.apply_verdict) { conditions.push("ja.apply_verdict = ?"); params.push(filters.apply_verdict); }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -121,15 +125,24 @@ export function listJobs(filters: JobFilters = {}): (Job & {
       SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
       FROM agent_commands
       WHERE command_type = 'research_job' AND status IN ('pending', 'running') AND json_valid(payload_json)
+        AND created_at >= datetime('now', '-30 minutes')
     ) rc ON rc.job_id = j.id
     LEFT JOIN (
       SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
       FROM agent_commands
       WHERE command_type = 'scrape_job' AND status IN ('pending', 'running') AND json_valid(payload_json)
+        AND created_at >= datetime('now', '-30 minutes')
     ) sc ON sc.job_id = j.id
     ${where}
     ORDER BY
-      CASE j.status WHEN 'new' THEN 0 ELSE 1 END,
+      CASE j.user_status
+        WHEN 'offer'        THEN 0
+        WHEN 'interviewing' THEN 1
+        WHEN 'applied'      THEN 2
+        WHEN 'interesting'  THEN 3
+        ELSE 10
+      END,
+      CASE j.pipeline_status WHEN 'new' THEN 0 ELSE 1 END,
       COALESCE(ja.relevance_score, 0) DESC,
       COALESCE(cr.trustworthiness_score, 0) DESC,
       j.first_seen DESC
@@ -174,16 +187,13 @@ export function addManualJob(url: string): { id: number; created: boolean } {
 
 export function updateJobWorkflowFields(
   id: number,
-  fields: { status?: string; comment?: string; current_interview_status?: string }
+  fields: { user_status?: string; comment?: string }
 ): void {
   const db = getDb();
   const updates: string[] = [];
   const params: unknown[] = [];
-  if (fields.status !== undefined) { updates.push("status = ?"); params.push(fields.status); }
+  if (fields.user_status !== undefined) { updates.push("user_status = ?"); params.push(fields.user_status); }
   if (fields.comment !== undefined) { updates.push("comment = ?"); params.push(fields.comment); }
-  if (fields.current_interview_status !== undefined) {
-    updates.push("current_interview_status = ?"); params.push(fields.current_interview_status);
-  }
   if (!updates.length) return;
   updates.push("updated_at = datetime('now')");
   params.push(id);
@@ -215,6 +225,18 @@ export function createResearchCommand(jobId: number): { commandId: number; exist
   if (existing) return { commandId: existing.id, existing: true };
   const result = db.prepare(
     "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('research_job', ?, 'pending', 'ui')"
+  ).run(JSON.stringify({ job_id: jobId }));
+  return { commandId: result.lastInsertRowid as number, existing: false };
+}
+
+export function createScreenCommand(jobId: number): { commandId: number; existing: boolean } {
+  const db = getDb();
+  const existing = db.prepare(
+    "SELECT id FROM agent_commands WHERE command_type = 'screen_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
+  ).get(jobId) as { id: number } | undefined;
+  if (existing) return { commandId: existing.id, existing: true };
+  const result = db.prepare(
+    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('screen_job', ?, 'pending', 'ui')"
   ).run(JSON.stringify({ job_id: jobId }));
   return { commandId: result.lastInsertRowid as number, existing: false };
 }
