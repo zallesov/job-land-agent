@@ -47,6 +47,9 @@ def create_db(db_path: str) -> None:
         first_seen TEXT NOT NULL DEFAULT (datetime('now')),
         last_seen TEXT NOT NULL DEFAULT (datetime('now')),
         status TEXT NOT NULL DEFAULT 'new',
+        pipeline_status TEXT NOT NULL DEFAULT 'new',
+        user_status TEXT,
+        research_status TEXT,
         comment TEXT,
         current_interview_status TEXT,
         source_payload_json TEXT,
@@ -163,6 +166,9 @@ def create_db(db_path: str) -> None:
         "ALTER TABLE jobs ADD COLUMN deleted_at TEXT",
         "ALTER TABLE jobs ADD COLUMN salary_range TEXT",
         "ALTER TABLE jobs ADD COLUMN dedup_key TEXT",
+        "ALTER TABLE jobs ADD COLUMN pipeline_status TEXT NOT NULL DEFAULT 'new'",
+        "ALTER TABLE jobs ADD COLUMN user_status TEXT",
+        "ALTER TABLE jobs ADD COLUMN research_status TEXT",
     ]:
         try:
             cur.execute(migration_sql)
@@ -172,6 +178,14 @@ def create_db(db_path: str) -> None:
 
     try:
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup_key ON jobs(dedup_key)")
+        con.commit()
+    except Exception:
+        pass
+
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_pipeline_status ON jobs(pipeline_status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user_status ON jobs(user_status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_research_status ON jobs(research_status)")
         con.commit()
     except Exception:
         pass
@@ -220,16 +234,31 @@ def get_job(con: sqlite3.Connection, job_id: int) -> dict | None:
 
 def update_job_status(con: sqlite3.Connection, job_id: int, status: str,
                       comment: str | None = None) -> None:
+    """Write pipeline_status (and optionally comment). Does NOT touch user_status."""
     if comment is not None:
         con.execute(
-            "UPDATE jobs SET status = ?, comment = ?, updated_at = datetime('now') WHERE id = ?",
+            "UPDATE jobs SET pipeline_status=?, comment=?, updated_at=datetime('now') WHERE id=?",
             (status, comment, job_id),
         )
     else:
         con.execute(
-            "UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?",
+            "UPDATE jobs SET pipeline_status=?, updated_at=datetime('now') WHERE id=?",
             (status, job_id),
         )
+
+
+def update_user_status(con: sqlite3.Connection, job_id: int, status: str) -> None:
+    con.execute(
+        "UPDATE jobs SET user_status=?, updated_at=datetime('now') WHERE id=?",
+        (status, job_id),
+    )
+
+
+def update_research_status(con: sqlite3.Connection, job_id: int, status: str) -> None:
+    con.execute(
+        "UPDATE jobs SET research_status=?, updated_at=datetime('now') WHERE id=?",
+        (status, job_id),
+    )
 
 
 def insert_job(con: sqlite3.Connection, **fields) -> int:
@@ -243,7 +272,7 @@ def insert_job(con: sqlite3.Connection, **fields) -> int:
 
 
 def update_job_machine_fields(con: sqlite3.Connection, job_id: int, **fields) -> None:
-    PROTECTED = {"status", "comment", "current_interview_status"}
+    PROTECTED = {"status", "comment"}
     safe = {k: v for k, v in fields.items() if k not in PROTECTED}
     if not safe:
         return

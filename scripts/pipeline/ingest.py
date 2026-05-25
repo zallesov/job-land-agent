@@ -23,10 +23,10 @@ def ingest_jobs(jobs: list[ShallowJob], db_path: str = _DEFAULT_DB) -> list[int]
             cur = con.execute(
                 """INSERT INTO jobs
                    (url, apply_url, provider, posted_company_name, title, location, country,
-                    date_posted, salary_range, dedup_key, status, comment)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    date_posted, salary_range, dedup_key, status, pipeline_status, comment)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (j.url, j.url, j.provider, j.company, j.title, j.location, j.country,
-                 j.posting_date, j.salary_raw, j.dedup_key, j.status,
+                 j.posting_date, j.salary_raw, j.dedup_key, j.status, 'new',
                  _SKIP_COMMENT if is_skip else None),
             )
             if not is_skip:

@@ -118,7 +118,7 @@ def main() -> int:
         )
 
     con.execute(
-        "UPDATE jobs SET status='researched', updated_at=datetime('now') WHERE id=?",
+        "UPDATE jobs SET research_status='researched', updated_at=datetime('now') WHERE id=?",
         (args.job_id,),
     )
     log_event(
