@@ -47,10 +47,11 @@ export async function POST(req: NextRequest) {
     const { mkdirSync } = await import("fs");
     mkdirSync(logDir, { recursive: true });
     const logFd = openSync(logFile, "a");
+    const projectRoot = path.resolve(process.cwd(), "..");
     const child = spawn(
       HERMES,
       ["--yolo", "--skills", cfg.skill, "-z", prompt],
-      { detached: true, stdio: ["ignore", logFd, logFd] }
+      { detached: true, stdio: ["ignore", logFd, logFd], cwd: projectRoot }
     );
     child.unref();
   }

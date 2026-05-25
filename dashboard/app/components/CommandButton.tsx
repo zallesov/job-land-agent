@@ -51,9 +51,21 @@ export function CommandButton({ jobId, commands, onDone, compact = false }: {
     return (
       <div className="flex items-center gap-1.5">
         {latest && (
-          <span className={`text-xs ${STATUS_COLOR[latest.status] ?? "text-gray-400"}`}>
-            {STATUS_ICON[latest.status] ?? "?"}
-          </span>
+          <>
+            <span className={`text-xs ${STATUS_COLOR[latest.status] ?? "text-gray-400"}`}>
+              {STATUS_ICON[latest.status] ?? "?"}
+            </span>
+            <a
+              href={`/api/commands/${latest.id}/log`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs opacity-40 hover:opacity-80 transition-opacity"
+              style={{ color: "var(--text-3)", textDecoration: "none" }}
+              title="View session log"
+            >
+              log ↗
+            </a>
+          </>
         )}
         <button
           onClick={triggerResearch}
