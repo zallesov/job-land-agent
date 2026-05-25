@@ -1,22 +1,22 @@
 ---
 name: read-web-pages
-description: Use when fetching content from web pages that block headless browsers (DataDome, Cloudflare, bot detection). Use when MCP browser returns CAPTCHA or 403. Use when a site requires authenticated session cookies to view content.
+description: Use when fetching content from web pages that block non-profile browsers (DataDome, Cloudflare, bot detection). Use when a site requires authenticated session cookies to view content.
 ---
 
-# Read Web Pages via Headful Local Browser
+# Read Web Pages via Visible Local Chrome CDP
 
 ## Overview
 
-Sites with bot detection (DataDome, Cloudflare) block headless MCP browsers. Connect to the persistent headful Chrome at `localhost:9222` instead — it has real cookies, real fingerprint, no bot signals.
+Sites with bot detection (DataDome, Cloudflare) block non-profile browsers. Use the persistent visible Chrome session at `localhost:9222` instead — it has real cookies, real fingerprint, no bot signals.
 
 ## When to Use
 
-- MCP browser gets CAPTCHA or "Access temporarily restricted"
+- Non-profile browser tools get CAPTCHA or "Access temporarily restricted"
 - Site requires login (Wellfound, LinkedIn, etc.)
 - DataDome / Cloudflare detected
 - Need to read a page where auth cookies matter
 
-**Do NOT use if:** site has no bot protection and MCP browser works fine.
+**Do NOT use non-CDP browser navigation tools.** Use `browser_cdp` for direct browser operations, or a Playwright script that connects over CDP when page text extraction is easier in Python.
 
 ## Core Pattern
 
@@ -65,7 +65,7 @@ if match:
 
 | Mistake | Fix |
 |---------|-----|
-| Using MCP browser on bot-protected sites | Use `connect_over_cdp("http://localhost:9222")` |
+| Using non-profile browser tools on bot-protected sites | Use `browser_cdp` or `connect_over_cdp("http://localhost:9222")` |
 | Launching new browser instead of attaching | `connect_over_cdp` not `launch()` — new browser has no cookies |
 | Fetching with `urllib`/`requests` after getting cookies | DataDome ties cookie to browser fingerprint; raw HTTP requests get 403 |
 | Not waiting for JS render | Add `await page.wait_for_timeout(2000)` after `goto` |

@@ -166,16 +166,21 @@ def _notify_telegram(job_id: int, result: dict) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_HOME_CHANNEL")
     if not token or not chat_id:
-        env_file = Path(__file__).parent.parent / ".hermes" / "profiles" / "interviewprep" / ".env"
-        if not env_file.exists():
-            env_file = Path.home() / ".hermes" / "profiles" / "interviewprep" / ".env"
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("TELEGRAM_BOT_TOKEN=") and not line.startswith("#"):
-                    token = line.split("=", 1)[1].strip()
-                elif line.startswith("TELEGRAM_HOME_CHANNEL=") and not line.startswith("#"):
-                    chat_id = line.split("=", 1)[1].strip()
+        profile_name = os.environ.get("HERMES_PROFILE", "joblandagent")
+        env_files = [
+            Path(__file__).parent.parent / ".env",
+            Path.home() / ".hermes" / "profiles" / profile_name / ".env",
+        ]
+        for env_file in env_files:
+            if env_file.exists():
+                for line in env_file.read_text().splitlines():
+                    line = line.strip()
+                    if line.startswith("TELEGRAM_BOT_TOKEN=") and not line.startswith("#"):
+                        token = line.split("=", 1)[1].strip()
+                    elif line.startswith("TELEGRAM_HOME_CHANNEL=") and not line.startswith("#"):
+                        chat_id = line.split("=", 1)[1].strip()
+                if token and chat_id:
+                    break
     if not token or not chat_id:
         print("WARN: TELEGRAM_BOT_TOKEN/TELEGRAM_HOME_CHANNEL not set, skipping notify", file=sys.stderr)
         return

@@ -6,11 +6,166 @@ const DB_PATH = path.resolve(process.cwd(), "../jobs.db");
 
 const g = global as typeof global & { _db?: Database.Database };
 
+function ensureSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      display_name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL,
+      website_url TEXT,
+      domain TEXT,
+      linkedin_url TEXT,
+      glassdoor_url TEXT,
+      crunchbase_url TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL,
+      provider_job_id TEXT,
+      company_id INTEGER REFERENCES companies(id),
+      posted_company_name TEXT,
+      actual_hiring_company_id INTEGER REFERENCES companies(id),
+      title TEXT,
+      description TEXT,
+      apply_url TEXT,
+      location TEXT,
+      country TEXT,
+      remote_scope TEXT,
+      date_posted TEXT,
+      first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+      last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+      status TEXT NOT NULL DEFAULT 'new',
+      pipeline_status TEXT NOT NULL DEFAULT 'new',
+      user_status TEXT,
+      research_status TEXT,
+      comment TEXT,
+      current_interview_status TEXT,
+      source_payload_json TEXT,
+      deleted_at TEXT,
+      salary_range TEXT,
+      dedup_key TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS company_research (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL REFERENCES companies(id),
+      researched_at TEXT,
+      research_status TEXT NOT NULL DEFAULT 'pending',
+      legitimacy_check TEXT,
+      hiring_entity_type TEXT,
+      founded_year INTEGER,
+      hq_location TEXT,
+      employee_count TEXT,
+      headcount_trend TEXT,
+      funding_summary TEXT,
+      funding_stage TEXT,
+      risk_news TEXT,
+      glassdoor_summary TEXT,
+      trustworthiness_score INTEGER,
+      research_notes TEXT,
+      source_urls_json TEXT,
+      raw_research_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS job_assessments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL UNIQUE REFERENCES jobs(id),
+      assessed_at TEXT,
+      assessment_status TEXT NOT NULL DEFAULT 'pending',
+      relevance_score INTEGER,
+      apply_verdict TEXT,
+      one_line_summary TEXT,
+      red_flag_scan TEXT,
+      seniority_fit TEXT,
+      tech_stack_fit TEXT,
+      ic_or_management TEXT,
+      salary_assessment TEXT,
+      remote_eligibility TEXT,
+      visa_contract_structure TEXT,
+      ai_native_assessment TEXT,
+      assessment_notes TEXT,
+      source_urls_json TEXT,
+      raw_assessment_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id),
+      status TEXT NOT NULL DEFAULT 'draft_requested',
+      tailored_cv_path TEXT,
+      cover_letter_path TEXT,
+      application_notes_path TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      submitted_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_commands (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      command_type TEXT NOT NULL,
+      payload_json TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_by TEXT NOT NULL DEFAULT 'system',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at TEXT,
+      finished_at TEXT,
+      result_json TEXT,
+      error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT,
+      summary_json TEXT,
+      error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER,
+      event_type TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT 'system',
+      event_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup_key ON jobs(dedup_key);
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_provider ON jobs(provider);
+    CREATE INDEX IF NOT EXISTS idx_jobs_country ON jobs(country);
+    CREATE INDEX IF NOT EXISTS idx_jobs_company_id ON jobs(company_id);
+    CREATE INDEX IF NOT EXISTS idx_jobs_pipeline_status ON jobs(pipeline_status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_user_status ON jobs(user_status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_research_status ON jobs(research_status);
+    CREATE INDEX IF NOT EXISTS idx_companies_domain ON companies(domain);
+    CREATE INDEX IF NOT EXISTS idx_companies_normalized_name ON companies(normalized_name);
+    CREATE INDEX IF NOT EXISTS idx_agent_commands_status ON agent_commands(status);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at);
+  `);
+}
+
 export function getDb(): Database.Database {
   if (!g._db) {
     g._db = new Database(DB_PATH, { readonly: false });
     g._db.pragma("foreign_keys = ON");
     g._db.pragma("journal_mode = WAL");
+    ensureSchema(g._db);
   }
   return g._db;
 }

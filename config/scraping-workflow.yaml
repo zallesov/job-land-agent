@@ -8,17 +8,18 @@
 #     scrapes job listings → saves JSON artifact →
 #     Hermes ingests → tags → sends Telegram digest
 #
-# Two browser code paths (keep them straight):
+# Browser code path:
 #   1. SCRAPING (this file) → scripts/scrape_greenhouse.py / scrape_jobleads.py
 #      Uses Playwright with channel="chrome", headless=False (visible window)
 #      Browser profile: ~/.chrome-profile (persistent, keeps auth)
-#   2. RESEARCH → Hermes built-in browser tool (browser_navigate, etc.)
-#      Uses headless agent-browser Chromium (no visible window, JS-capable)
+#   2. RESEARCH / MANUAL BROWSER OPERATIONS → browser_cdp only
+#      Uses the visible Chrome CDP session at http://localhost:9222.
+#      Never use the non-CDP navigation tool in this agent.
 #
 # Hermes cron setup:
 #   hermes cron create "0 8 * * *" \
 #     --name "daily-scraping-pipeline" \
-#     --workdir /Users/zall/interviews \
+#     --workdir <profile-root> \
 #     --deliver telegram \
 #     "Read config/scraping-workflow.yaml. Execute the daily pipeline:
 #      For each enabled provider, run its Python scraper script,

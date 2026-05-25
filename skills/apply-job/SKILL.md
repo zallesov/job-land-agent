@@ -85,9 +85,9 @@ From the CV text, extract:
 
 | Platform | Backend | Why |
 |---|---|---|
-| WellFound | `browser_cdp` (CDP to localhost:9222) | Bot detection blocks Browserbase. Use real cookies + fingerprint. |
+| WellFound | `browser_cdp` (CDP to localhost:9222) | Bot detection blocks non-profile browsers. Use real cookies + fingerprint. |
 | Greenhouse, Lever, Workday, Ashby (careers page) | `browser_cdp` (CDP) | Often have bot detection. |
-| All others | `browser_navigate` (Browserbase) | OK for simpler forms. |
+| All others | `browser_cdp` (CDP) | This agent must always use the visible local Chrome profile. |
 
 ### CDP approach (WellFound / bot-heavy ATS)
 
@@ -99,18 +99,18 @@ curl -s http://localhost:9222/json/version | head -1
 ```
 If not running: tell user to run `bash start-chrome.sh`.
 
-**Do NOT use browser_navigate for WellFound** — it will fail silently (Apply button click produces no reaction).
+**Do NOT use the non-CDP navigation tool anywhere in this agent** — it routes through the wrong browser path and can silently lose cookies, visibility, or interaction state.
 
 Steps:
 1. Use `browser_cdp(method="Target.getTargets")` to find the tab with the job URL
-2. If the page isn't already open, navigate there: `browser_navigate(url=...)` — but only to get the page loaded. Then switch to CDP for interactions.
+2. If the page isn't already open, open it with `browser_cdp(method="Target.createTarget", params={"url": "<job URL>"})`, then use CDP for every interaction.
 3. Click the Apply button via CDP JavaScript:
    ```
    method="Runtime.evaluate"
    target_id="<tab_id>"
    expression="(() => { const btn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Apply'); if(btn) { btn.click(); return 'clicked'; } return 'not found'; })()"
    ```
-4. Use `browser_snapshot()` to read the modal/form after it appears
+4. Use `browser_cdp(method="Runtime.evaluate", target_id="<tab_id>", params={"expression": "document.body.innerText"})` to read the modal/form after it appears
 5. For full form structure, extract via CDP:
    ```
    expression="(() => { const d = document.querySelector('[role=\"dialog\"]'); const labels = [...d.querySelectorAll('label')].map(l => l.textContent.trim()); const inputs = [...d.querySelectorAll('input, textarea, select')].map(el => ({tag:el.tagName, type:el.type, name:el.name, placeholder:el.placeholder, id:el.id, required:el.required})); return JSON.stringify({labels, inputs}); })()"
@@ -118,7 +118,7 @@ Steps:
 
 ### Filling React-controlled inputs (WellFound, Greenhouse, etc.)
 
-**⚠ PITFALL: Stale refs when mixing Browserbase and CDP.** If you used `browser_navigate` first (Browserbase), then switched to `browser_cdp` for clicking, the ref IDs from `browser_snapshot()` (e.g., `@e14`) belong to the Browserbase session and will resolve to "Unknown ref" errors. Once you start using CDP for interactions, use ONLY `browser_cdp(method="Runtime.evaluate", ...)` for filling. Do not use `browser_type`, `browser_click`, or `browser_snapshot` for form filling — they route through the wrong session. Use `browser_snapshot()` only to verify visually after filling.
+**⚠ PITFALL: Stale refs when mixing browser backends.** If you use non-CDP browser tools, then switch to `browser_cdp` for clicking, ref IDs can belong to a different browser session and resolve to "Unknown ref" errors. Use ONLY `browser_cdp(method="Runtime.evaluate", ...)` for filling. Do not use `browser_type`, `browser_click`, or `browser_snapshot` for form filling — they route through the wrong session. Use CDP DOM extraction or screenshots only to verify after filling.
 
 React-controlled inputs ignore `.value = "..."`. Use the native setter:
 ```javascript
@@ -272,7 +272,7 @@ setValue(el, 'your text here');
 2. Visa/work authorization radios
 3. Experience/eligibility radios
 4. Essay/screening textareas (one CDP call per field is OK — batch where possible)
-5. Confirm with `browser_snapshot()` that all values appear
+5. Confirm with `browser_cdp(method="Runtime.evaluate", target_id="<tab_id>", params={"expression": "document.body.innerText"})` that all values appear
 
 **NEVER click Submit / Send application.**
 

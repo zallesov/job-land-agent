@@ -11,7 +11,7 @@ description: Research a single job posting from SQLite DB. Does real web researc
 - This is a background automated task. No human is watching. Proceed through all steps without pausing.
 - On any blocking error, mark command failed and exit. Do not ask what to do.
 - **CRITICAL: Do NOT write SQL directly to the database at any point.** The ONLY allowed DB writes are: the `status='running'` update in Step 1, and the `db_write_research.py` script in Step 3. Never run any other UPDATE or INSERT. The script sets `jobs.research_status='researched'` (does NOT touch `pipeline_status` or `user_status`) — do not set it to anything else yourself.
-- **CRITICAL: NEVER use `research_job.py` or any Anthropic API-based research method.** This skill uses LOCAL browser tools (agent-browser headless Chromium) and web search. The `research_job.py` script fires an Anthropic API call and is irrelevant to the local setup. If you reach for it, stop and come back to this skill.
+- **CRITICAL: NEVER use `research_job.py` or any Anthropic API-based research method.** This skill uses LOCAL Chrome CDP browser tools and web search. The `research_job.py` script fires an Anthropic API call and is irrelevant to the local setup. If you reach for it, stop and come back to this skill.
 
 ## Input
 
@@ -345,37 +345,34 @@ Return: company legitimacy, employee count, funding, Glassdoor, risk news, red f
 
 ### Chrome Pre-Flight: Verify Local Chrome Before Any Browser Tool
 
-**Config** (`hermes-profile/config.yaml`) specifies:
+**Config** (`config.yaml` in an installed profile, or local `hermes-profile/config.yaml` in maintainer legacy mode) specifies:
 ```yaml
 browser:
   engine: auto
   cdp_url: 'http://localhost:9222'
 ```
 
-**The silent fallback trap:** When Chrome is NOT running on `localhost:9222`, `browser_navigate` does NOT fail — it silently falls back to Browserbase cloud. The cloud session has no profile persistence, no saved logins, and triggers bot detection. The config `cdp_url` is ignored in this case.
+**The browser backend trap:** Non-CDP browser tools can use the wrong browser path. That loses profile persistence, saved logins, and visible user control.
 
-**Hard rule: Before EVERY `browser_navigate` call, verify Chrome is alive:**
+**Hard rule: never use the non-CDP navigation tool in this agent. Before EVERY `browser_cdp` call that opens or manipulates pages, verify Chrome is alive:**
 
 ```bash
 curl -s http://localhost:9222/json/version || echo "NOT_RUNNING"
 ```
 
-If `NOT_RUNNING`, tell the user to run `bash start-chrome.sh` first. Do not proceed with `browser_navigate` until Chrome responds.
+If `NOT_RUNNING`, tell the user to run `bash start-chrome.sh` first. Do not proceed with browser operations until Chrome responds.
 
-### Browser Architecture: Local Headless Chromium, Not Cloud
+### Browser Architecture: Visible Local Chrome via CDP
 
-The Hermes browser tool (`browser_navigate`/`browser_click`/`browser_snapshot/etc.`) routes through **agent-browser**, which launches a local **headless** Chromium on the user's machine. There is NO Browserbase, BrowserUse, or cloud provider configured — no `BROWSERBASE_API_KEY`, no `BROWSER_USE_API_KEY`, no `NOUS_USER_TOKEN`. Never claim a cloud browser is being used.
+Use `browser_cdp` against the visible Chrome instance on `http://localhost:9222`. There is NO cloud browser provider configured — no `BROWSERBASE_API_KEY`, no `BROWSER_USE_API_KEY`, no `NOUS_USER_TOKEN`. Never claim a cloud browser is being used.
 
-- agent-browser defaults to **headless** mode → no visible Chrome window
-- `npx agent-browser` runs locally; user agent shows `HeadlessChrome`
-- The `apply-job` skill uses a **separate** Playwright script (`apply_job_filler.py`) with `headless=False` — that's the only code path producing a visible Chrome window
+- `browser_cdp(method="Target.createTarget", params={"url": "<url>"})` opens a visible Chrome tab
+- `browser_cdp(method="Target.getTargets")` lists tabs and target IDs
+- `browser_cdp(method="Runtime.evaluate", target_id="<target_id>", params={"expression": "document.body.textContent"})` extracts page text from the correct tab
 
 ### If the User Asks Why No Browser Window Appears
 
-Explain: agent-browser runs headless locally for research tasks. The visible window only opens during application fills (Playwright headed mode). If the user wants to see the research browser, options include:
-- Run research through a Playwright script instead of agent-browser
-- Configure agent-browser for headed mode (not currently set up)
-- Use browser_vision for screenshots of what the headless browser is seeing
+Explain: this agent should use the visible local Chrome CDP session. If no window appears, Chrome is probably not running on `localhost:9222`; run `bash start-chrome.sh`.
 
 ---
 
@@ -410,12 +407,12 @@ t.substring(idx, idx + 4000)
 
 ### Bot-Detection Cascade: Research Source Fallbacks
 
-When researching companies, multiple sources block headless browser IPs:
+When researching companies, multiple sources block non-profile browsers:
 
 | Source | Typical result | Fallback |
 |--------|---------------|----------|
 | Glassdoor | Cloudflare "Humans only" challenge | Write `Not found` — no reliable workaround |
-| Clutch.co | Generally accessible; search results may be JS-rendered | Use `browser_navigate` → `browser_snapshot`; if blocked, write `Not found` |
+| Clutch.co | Generally accessible; search results may be JS-rendered | Use `browser_cdp`; if blocked, write `Not found` |
 | Crunchbase | Cloudflare "Just a moment..." challenge | Write `Not found` |
 | DuckDuckGo | "Unexpected error. Please try again." | Skip — use Bing or direct URLs |
 | Bing | CAPTCHA challenge after 2-3 queries | Use Google News RSS instead |

@@ -234,16 +234,16 @@ def get_job(con: sqlite3.Connection, job_id: int) -> dict | None:
 
 def update_job_status(con: sqlite3.Connection, job_id: int, status: str,
                       comment: str | None = None) -> None:
-    """Write pipeline_status (and optionally comment). Does NOT touch user_status."""
+    """Write pipeline_status and legacy status for compatibility."""
     if comment is not None:
         con.execute(
-            "UPDATE jobs SET pipeline_status=?, comment=?, updated_at=datetime('now') WHERE id=?",
-            (status, comment, job_id),
+            "UPDATE jobs SET status=?, pipeline_status=?, comment=?, updated_at=datetime('now') WHERE id=?",
+            (status, status, comment, job_id),
         )
     else:
         con.execute(
-            "UPDATE jobs SET pipeline_status=?, updated_at=datetime('now') WHERE id=?",
-            (status, job_id),
+            "UPDATE jobs SET status=?, pipeline_status=?, updated_at=datetime('now') WHERE id=?",
+            (status, status, job_id),
         )
 
 

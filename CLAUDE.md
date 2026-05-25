@@ -4,7 +4,7 @@
 
 **All project skills live in `skills/`.** Never create skills in `hermes-profile/skills/` or `tmp/skills/`.
 
-`hermes-profile/config.yaml` already has `skills.external_dirs: ['../skills']` so both Claude (via Skill tool) and Hermes agent load from the same directory.
+For maintainer legacy mode, local `hermes-profile/config.yaml` should keep `terminal.cwd: ".."` and `skills.external_dirs: ["../skills"]` so both Claude (via Skill tool) and Hermes agent load from the same root `skills/` directory.
 
 ## Scripts structure
 

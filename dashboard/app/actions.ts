@@ -5,7 +5,7 @@ import { spawn } from "child_process";
 import { openSync, mkdirSync } from "fs";
 import path from "path";
 
-const HERMES = "/Users/zall/.local/bin/interviewprep";
+const HERMES = process.env.HERMES_BIN || "hermes";
 
 export async function addManualJobAction(formData: FormData) {
   const url = (formData.get("url") as string)?.trim();

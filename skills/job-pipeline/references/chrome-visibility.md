@@ -2,7 +2,7 @@
 
 ## Why
 
-Zall watches the Chrome window while the pipeline runs. Every CDP-created page must be visible and focused — no background tabs. `ctx.new_page()` via Playwright's `connect_over_cdp` creates a tab in the Chrome window, but it stays in the background (unfocused) unless `page.bring_to_front()` is called.
+The user watches the Chrome window while the pipeline runs. Every CDP-created page must be visible and focused — no background tabs. `ctx.new_page()` via Playwright's `connect_over_cdp` creates a tab in the Chrome window, but it stays in the background (unfocused) unless `page.bring_to_front()` is called.
 
 ## Fix Pattern
 
@@ -39,4 +39,4 @@ Then check each is followed by `bring_to_front()` within 2 lines.
 
 ## Historical Context
 
-Zall has mentioned this requirement repeatedly. It was documented in AGENTS.md under "ALL CHROME OPERATIONS MUST BE VISIBLE" during the session of 2026-05-23 after the wellfound pipeline run produced invisible background tabs that Zall couldn't observe.
+This requirement is documented in AGENTS.md under "ALL CHROME OPERATIONS MUST BE VISIBLE" after a wellfound pipeline run produced invisible background tabs that the user could not observe.

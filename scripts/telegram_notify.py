@@ -10,6 +10,8 @@ Usage:
 """
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_connection
 
-HERMES = "/Users/zall/.local/bin/hermes"
+HERMES = os.environ.get("HERMES_BIN") or shutil.which("hermes") or "hermes"
 TELEGRAM_TARGET = "telegram"
 
 

@@ -15,7 +15,7 @@ tmp/
 *.pdf
 cv_extracted.txt
 cv_master_content.md
-ALEKSANDR_ZALESOV*
+*CV-*.md
 page1_nano_prompt.txt
 page2_nano_prompt.txt
 
@@ -54,6 +54,7 @@ dashboard/form3_research.md
 dashboard/sparetech_research_report.md
 
 # Node
+node_modules/
 dashboard/node_modules/
 dashboard/.next/
 
@@ -88,6 +89,9 @@ config/cv.md
 config/resume.pdf
 
 # Hermes profile personal data
+hermes-profile/*
+!hermes-profile/
+!hermes-profile/.gitignore
 hermes-profile/config.yaml
 hermes-profile/auth.json
 hermes-profile/.env
@@ -102,6 +106,24 @@ hermes-profile/.clean_shutdown
 hermes-profile/skills/.bundled_manifest_*.tmp
 hermes-profile/skills/.usage.json
 
+# Hermes distribution/runtime local files
+.env
+.hermes/
+state.db
+state.db-shm
+state.db-wal
+memories/
+sessions/
+logs/
+cache/
+audio_cache/
+image_cache/
+sandboxes/
+workspace/
+pastes/
+plans/
+lsp/
+
 # Legacy pipeline config (superseded by config/user.yaml)
 config/pipeline_config.json
 
@@ -109,8 +131,11 @@ config/pipeline_config.json
 tmp/skills/
 
 # Personal files
-ALEKSANDR_*.md
 jobs_all.*
+
+# Internal planning docs
+docs/superpowers/
 
 # Chrome persistent profile (auto-created by start-chrome.sh)
 .chrome-profile
+node_modules

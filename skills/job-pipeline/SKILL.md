@@ -65,8 +65,7 @@ The pipeline enriches jobs one-at-a-time via CDP. For a large batch (100+ jobs),
 JOB_IDS=$(sqlite3 jobs.db "SELECT id FROM jobs WHERE provider='<name>' AND status='new' ORDER BY id;" | tr '\n' ' ')
 # Run enrichment separately
 python3 scripts/enrich_jobs_batch.py --job-ids $JOB_IDS --workers 3
-# Then screen
-export DEEPSEEK_API_KEY=$(python3 -c "with open('hermes-profile/.env') as f: [print(line.split('=',1)[1].strip()) for line in f if line.startswith('DEEPSEEK_API_KEY=')]")
+# Then screen. DEEPSEEK_API_KEY must already be exported in this shell.
 JOB_IDS=$(sqlite3 jobs.db "SELECT id FROM jobs WHERE provider='<name>' AND status='enriched' AND length(description)>50 ORDER BY id;" | tr '\n' ' ')
 ```
 
@@ -76,7 +75,7 @@ python3 -c "
 import sys; sys.path.insert(0, 'scripts')
 from pipeline.screen_jobs_batch import screen_jobs_batch
 import os
-# set DEEPSEEK_API_KEY from .env first
+# export DEEPSEEK_API_KEY first
 ok_ids, failures = screen_jobs_batch([LIST_OF_IDS], max_workers=5)
 "
 

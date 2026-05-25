@@ -56,10 +56,10 @@ Auth check results:
 
 ## Step 4: For each failed provider — OR when user says "let me log in"
 
-**Do NOT tell the user to navigate to the login page themselves.** Proactively navigate there in the visible Chrome window:
+**Do NOT tell the user to navigate to the login page themselves.** Proactively open the login page in the visible Chrome window through CDP. Never use the non-CDP navigation tool in this agent.
 
 ```python
-browser_navigate(url="<provider login URL>")
+browser_cdp(method="Target.createTarget", params={"url": "<provider login URL>"})
 ```
 
 The user will see the login form and fill it in. Wait for them to say "go" / "done" before continuing.

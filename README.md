@@ -25,16 +25,90 @@ An autonomous job search assistant for software engineers. Scrapes job boards, e
 
 ---
 
-## Setup
+## User install
 
-**1. Clone and install**
+Install this repo as a Hermes profile distribution:
+
+```bash
+hermes profile install github.com/<you>/joblandagent --alias
+```
+
+Set the required model key in your shell environment:
+
+```bash
+export DEEPSEEK_API_KEY="<your DeepSeek API key>"
+```
+
+Then install app dependencies inside the installed profile directory:
+
+```bash
+cd ~/.hermes/profiles/joblandagent
+pip install -r requirements.txt
+pnpm install
+```
+
+Copy the sample user config and add your CV:
+
+```bash
+cp config/user.yaml.example config/user.yaml
+cp ~/your-cv.md config/cv.md
+```
+
+Runtime state, local config, auth, logs, browser profiles, and databases live under `~/.hermes/profiles/joblandagent/` and are not committed to this repo.
+
+The installed profile is self-contained. Hermes is configured with `terminal.cwd: .`, so commands run from the active profile root. Do not start the dashboard from a developer checkout when testing the installed profile.
+
+## Local development
+
+**1. Clone and install a local profile**
 
 ```bash
 git clone https://github.com/<you>/joblandagent
 cd joblandagent
+tmpdir=$(mktemp -d)
+for p in distribution.yaml SOUL.md config.yaml .env.EXAMPLE README.md package.json pnpm-lock.yaml pnpm-workspace.yaml requirements.txt start-chrome.sh config skills scripts dashboard; do
+  if [ -d "$p" ]; then
+    rsync -a --exclude node_modules --exclude .next "$p/" "$tmpdir/$p/"
+  else
+    cp "$p" "$tmpdir/$p"
+  fi
+done
+hermes profile install "$tmpdir" --name joblandagent-dev --alias --force --yes
+cd ~/.hermes/profiles/joblandagent-dev
 pip install -r requirements.txt
-cd dashboard && npm install && cd ..
+pnpm install
 ```
+
+Developer directive: after any change to distributable files, sync the installed Hermes dev profile before testing in Hermes. Distributable files include `SOUL.md`, `config.yaml`, `distribution.yaml`, `.env.EXAMPLE`, `README.md`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `requirements.txt`, `start-chrome.sh`, `config/`, `skills/`, `scripts/`, and `dashboard/`.
+
+```bash
+tmpdir=$(mktemp -d)
+for p in distribution.yaml SOUL.md config.yaml .env.EXAMPLE README.md package.json pnpm-lock.yaml pnpm-workspace.yaml requirements.txt start-chrome.sh config skills scripts dashboard; do
+  if [ -d "$p" ]; then
+    rsync -a --exclude node_modules --exclude .next "$p/" "$tmpdir/$p/"
+  else
+    cp "$p" "$tmpdir/$p"
+  fi
+done
+hermes profile install "$tmpdir" --name joblandagent-dev --alias --force --yes
+```
+
+Then install/update runtime dependencies from the profile root if needed:
+
+```bash
+cd ~/.hermes/profiles/joblandagent-dev
+pip install -r requirements.txt
+pnpm install
+```
+
+This repo root is the distribution source. Runtime profile state belongs under `~/.hermes/profiles/<profile-name>/`, not inside the repo. Keep `joblandagent` and `joblandagent-dev` independent by running Hermes and dashboard commands from the profile being tested:
+
+```bash
+hermes -p joblandagent      # installed distribution profile
+hermes -p joblandagent-dev  # local development distribution profile
+```
+
+Each profile owns its own `jobs.db`, `config/user.yaml`, `config/cv.md`, logs, sessions, and dashboard dependencies.
 
 **2. Configure**
 
@@ -44,20 +118,13 @@ cp config/user.yaml.example config/user.yaml
 cp ~/your-cv.md config/cv.md
 ```
 
-**3. Set up Hermes profile**
+**3. Configure model key**
 
 ```bash
-# Point Hermes at the profile in this repo:
-hermes --profile ./hermes-profile
+export DEEPSEEK_API_KEY="<your DeepSeek API key>"
 ```
 
-In another terminal, set your model API key in your local Hermes profile:
-
-```bash
-hermes --profile ./hermes-profile config set model.api_key "<your LLM provider API key>"
-```
-
-Do not commit API keys or your local `hermes-profile/config.yaml`. Keep that file untracked and local to your machine. `skills.external_dirs` should be set to `["../skills"]`, so Hermes loads the project skills from the repo-level `skills/` directory.
+Do not commit API keys, `.env`, `jobs.db`, local CV files, or runtime profile state.
 
 **4. Set up Telegram (optional but recommended)**
 
@@ -73,20 +140,40 @@ bash start-chrome.sh
 **6. Run onboarding**
 
 ```bash
-hermes --profile ./hermes-profile
+hermes -p joblandagent-dev
 # Then type:
 /onboarding
 ```
 
 Hermes walks through the rest of setup: asking for your locations, CV, search terms, and provider accounts.
 
----
-
 ## Starting the dashboard
 
+Start the dashboard from the active profile root. This is what makes `../jobs.db` resolve to that profile's local database:
+
 ```bash
-cd dashboard && npm run dev
+pnpm run dev
 # Opens http://localhost:3000
+```
+
+For manual testing outside Hermes, use an absolute profile path:
+
+```bash
+cd ~/.hermes/profiles/joblandagent
+pnpm run dev
+```
+
+For development-profile testing:
+
+```bash
+cd ~/.hermes/profiles/joblandagent-dev
+pnpm run dev
+```
+
+To test on another port:
+
+```bash
+PORT=3717 pnpm run dev
 ```
 
 ---

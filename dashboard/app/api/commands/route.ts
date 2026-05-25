@@ -5,7 +5,7 @@ import { openSync } from "fs";
 import path from "path";
 
 const ALLOWED_COMMANDS = new Set(["research_job", "screen_job"]);
-const HERMES = "/Users/zall/.local/bin/hermes";
+const HERMES = process.env.HERMES_BIN || "hermes";
 
 const COMMAND_CONFIG: Record<string, { skill: string; logDir: string; promptFn: (jobId: number, commandId: number, dbPath: string) => string }> = {
   research_job: {

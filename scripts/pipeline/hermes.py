@@ -1,6 +1,8 @@
 from __future__ import annotations
 import json
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -9,15 +11,17 @@ import yaml
 from .types import HermesResult
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-CV_PATH = PROJECT_ROOT / "cv_master_content.md"
+HERMES_PROFILE = os.environ.get("HERMES_PROFILE", "joblandagent")
+_PROFILE_HOME = Path.home() / ".hermes" / "profiles" / HERMES_PROFILE
+AIAgent = None
 
 
 def _find_hermes_venv_python() -> Path | None:
     """Locate the Hermes venv Python regardless of $HOME sandboxing."""
     try:
-        which = subprocess.run(["which", "hermes"], capture_output=True, text=True)
-        wrapper = Path(which.stdout.strip())
-        if wrapper.exists():
+        hermes_bin = shutil.which("hermes")
+        wrapper = Path(hermes_bin) if hermes_bin else None
+        if wrapper and wrapper.exists():
             content = wrapper.read_text()
             m = re.search(r'exec\s+"([^"]+/hermes-agent/venv)/bin/hermes"', content)
             if m:
@@ -26,8 +30,7 @@ def _find_hermes_venv_python() -> Path | None:
                     return py
     except Exception:
         pass
-    candidate = Path("/Users/zall/.hermes/hermes-agent/venv/bin/python")
-    return candidate if candidate.exists() else None
+    return None
 
 
 _HERMES_VENV_PYTHON = _find_hermes_venv_python()
@@ -57,15 +60,7 @@ def build_prompt(skill: str, context: dict) -> str:
     parts = [f"Use skill {skill}."]
     for k, v in context.items():
         parts.append(f"{k}: {v}.")
-    parts.append(
-        "Respond with ONLY a single JSON object on one line, "
-        "no markdown fences, no surrounding text."
-    )
     return " ".join(parts)
-
-
-HERMES_PROFILE = "joblandagent"
-_PROFILE_HOME = Path.home() / ".hermes" / "profiles" / HERMES_PROFILE
 
 
 def _profile_home() -> Path | None:
@@ -105,6 +100,30 @@ print(result)
 
 
 def hermes_call(skill: str, context: dict, timeout_sec: int = 300) -> HermesResult:
+    if AIAgent is not None:
+        prompt = build_prompt(skill, context)
+        try:
+            agent = AIAgent(quiet_mode=True, skip_context_files=True, max_iterations=10)
+            raw = agent.chat(prompt)
+        except TimeoutError:
+            return HermesResult(
+                success=False, data={}, error=f"timeout after {timeout_sec}s", raw_output=""
+            )
+        except Exception as e:
+            return HermesResult(success=False, data={}, error=str(e), raw_output="")
+
+        try:
+            s = raw
+            data = json.loads(s[s.index("{") : s.rindex("}") + 1])
+            success = data.get("status") == "success"
+            return HermesResult(
+                success=success, data=data, error=data.get("error"), raw_output=raw
+            )
+        except Exception as e:
+            return HermesResult(
+                success=False, data={}, error=f"parse error: {e}", raw_output=raw
+            )
+
     if _HERMES_VENV_PYTHON is None:
         return HermesResult(
             success=False, data={}, error="run_agent (Hermes) is not installed", raw_output=""

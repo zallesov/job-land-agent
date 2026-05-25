@@ -35,15 +35,10 @@ Runs up to 5 parallel DeepSeek API calls directly — no Hermes agent overhead. 
 
 ## Prerequisites
 
-**1. DEEPSEEK_API_KEY must be set in the environment.** The batch screening script calls the DeepSeek API directly. The key lives in `hermes-profile/.env`. Export it before running:
+**1. DEEPSEEK_API_KEY must be set in the environment.** The batch screening script calls the DeepSeek API directly. Export it in the shell running Hermes or place it in a local, untracked `.env` file:
 
 ```bash
-export DEEPSEEK_API_KEY=$(python3 -c "
-with open('hermes-profile/.env') as f:
-    for line in f:
-        if line.startswith('DEEPSEEK_API_KEY='):
-            print(line.split('=', 1)[1].strip())
-")
+export DEEPSEEK_API_KEY="<your DeepSeek API key>"
 ```
 
 **2. The job must have a description.** Screening reads the `description` field from the DB. If `description` is NULL or too short (<50 chars), the verdict will be `"Need Research"` — essentially a waste of a call.

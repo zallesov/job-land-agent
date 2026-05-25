@@ -11,11 +11,11 @@ from .types import HermesResult
 from scripts.db import get_connection, update_job_status
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-CV_PATH = PROJECT_ROOT / "cv_master_content.md"
+DEFAULT_CV_PATH = PROJECT_ROOT / "config" / "cv.md"
 _DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
+hermes_call = None
 
-# Load .env from hermes-profile if present
-_ENV_FILE = PROJECT_ROOT / "hermes-profile" / ".env"
+_ENV_FILE = PROJECT_ROOT / ".env"
 if _ENV_FILE.exists():
     for _line in _ENV_FILE.read_text().splitlines():
         _line = _line.strip()
@@ -54,12 +54,21 @@ def _load_config() -> dict:
     return {}
 
 
+def _cv_path(cfg: dict) -> Path:
+    configured = cfg.get("cv_path")
+    if configured:
+        path = Path(configured)
+        return path if path.is_absolute() else PROJECT_ROOT / path
+    return DEFAULT_CV_PATH
+
+
 def _deepseek_model() -> str:
     return os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
 
 def _build_user_message(job: dict, cfg: dict) -> str:
-    cv_text = CV_PATH.read_text() if CV_PATH.exists() else "(CV not found)"
+    cv_path = _cv_path(cfg)
+    cv_text = cv_path.read_text() if cv_path.exists() else "(CV not found)"
     prefs = cfg.get("job_preferences") or "not specified"
     langs = cfg.get("languages") or "not specified"
     salary = cfg.get("desired_salary") or "not specified"
@@ -86,6 +95,23 @@ Description:
 
 
 def screen_job(job_id: int, db_path: str = _DEFAULT_DB) -> HermesResult:
+    if callable(hermes_call):
+        result = hermes_call(
+            "screen-job",
+            {"job_id": job_id, "cv_path": str(DEFAULT_CV_PATH)},
+        )
+        con = get_connection(db_path)
+        try:
+            if result.success:
+                _upsert_assessment(con, job_id, result.data)
+                update_job_status(con, job_id, "screened")
+            else:
+                update_job_status(con, job_id, "screen_failed", comment=result.error)
+            con.commit()
+        finally:
+            con.close()
+        return result
+
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
         return HermesResult(

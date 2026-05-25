@@ -1,6 +1,6 @@
-# Aleksandr Zalesov
-Malaga, Spain / Berlin, Germany / Remote
-[LinkedIn](https://www.linkedin.com/in/zallesov/) | [zall.dev](https://zall.dev)
+# Example Candidate
+Spain / Germany / Remote
+[LinkedIn](https://www.linkedin.com/in/yourhandle/) | [Portfolio](https://example.com)
 
 ## Principal Engineer | AI Native Engineer | Team Lead | Cloud Architect
 

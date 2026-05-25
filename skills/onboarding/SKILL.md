@@ -271,10 +271,12 @@ Say:
 
 Open each site in sequence and wait for the user to confirm login before proceeding:
 
+Use the visible Chrome CDP session only. Never use the non-CDP navigation tool in this agent.
+
 ### LinkedIn
 
 ```python
-browser_navigate(url="https://www.linkedin.com/login")
+browser_cdp(method="Target.createTarget", params={"url": "https://www.linkedin.com/login"})
 ```
 
 Say: "Log into LinkedIn, then say **done**."
@@ -284,7 +286,7 @@ Wait for "done" / "logged in" / "go".
 Verify session by navigating to feed:
 
 ```python
-browser_navigate(url="https://www.linkedin.com/feed/")
+browser_cdp(method="Target.createTarget", params={"url": "https://www.linkedin.com/feed/"})
 ```
 
 Take a snapshot and confirm the feed is visible (not a login page). If still on login, ask user to try again.
@@ -292,7 +294,7 @@ Take a snapshot and confirm the feed is visible (not a login page). If still on 
 ### Glassdoor
 
 ```python
-browser_navigate(url="https://www.glassdoor.com/profile/login_input.htm")
+browser_cdp(method="Target.createTarget", params={"url": "https://www.glassdoor.com/profile/login_input.htm"})
 ```
 
 Say: "Log into Glassdoor, then say **done**."
@@ -304,7 +306,7 @@ Verify by navigating to `https://www.glassdoor.com/` and confirming user is logg
 ### Crunchbase
 
 ```python
-browser_navigate(url="https://www.crunchbase.com/login")
+browser_cdp(method="Target.createTarget", params={"url": "https://www.crunchbase.com/login"})
 ```
 
 Say: "Log into Crunchbase, then say **done**."

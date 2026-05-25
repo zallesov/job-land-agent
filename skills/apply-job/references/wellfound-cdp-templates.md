@@ -66,9 +66,9 @@ Template (adapt field names and values):
   }
 
   // LinkedIn
-  setInput(d.querySelector('input[name="customQuestionAnswers[253132][answer]"]'), 'https://linkedin.com/in/zallesov');
+  setInput(d.querySelector('input[name="customQuestionAnswers[253132][answer]"]'), 'https://linkedin.com/in/yourhandle');
   // GitHub
-  setInput(d.querySelector('input[name="customQuestionAnswers[253133][answer]"]'), 'https://github.com/zallesov');
+  setInput(d.querySelector('input[name="customQuestionAnswers[253133][answer]"]'), 'https://github.com/yourhandle');
 
   // Radios — query by full ID from extraction step
   d.querySelector('#form-input--modal-form-3543496--customQuestionAnswers\\[253134\\]\\[jobListingQuestionOptionId\\]--150524').click(); // Visa: No
@@ -86,4 +86,4 @@ Template (adapt field names and values):
 
 ## Verify with snapshot
 
-After filling, use `browser_snapshot()` to visually confirm all values appear. Do NOT use browser_type/browser_click — they route through Browserbase and refs will be stale.
+After filling, use `browser_cdp(method="Runtime.evaluate", target_id="<target_id>", params={"expression": "document.body.innerText"})` to confirm all values appear. Do NOT use browser_type/browser_click — they route through the wrong browser session and refs will be stale.

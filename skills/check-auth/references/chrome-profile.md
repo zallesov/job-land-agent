@@ -86,7 +86,7 @@ The profile's `Preferences` has `restore_on_startup: None` (default = New Tab pa
 
 ### `$HOME` resolves to wrong directory in agent environment
 
-The agent's terminal tool sets `$HOME` to `/Users/zall/.hermes/profiles/interviewprep/home` instead of the real home directory (`/Users/zall`). Any script using `$HOME` or Python's `Path.home()` for the profile path will create/write to the wrong directory, and Chrome will start with an empty profile.
+The agent's terminal tool may set `$HOME` to the profile sandbox home instead of the real user home. Any script using `$HOME` or Python's `Path.home()` for the profile path may create/write to the wrong directory, and Chrome will start with an empty profile.
 
 **Fix:** The `start-chrome.sh` script uses `SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"` to derive paths relative to itself. Python scrapers use `Path(__file__).resolve().parent.parent` for the same reason. Never use `$HOME` or `Path.home()` for Chrome profile paths.
 

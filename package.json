@@ -1,0 +1,17 @@
+{
+  "name": "joblandagent-profile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hermes profile distribution for JobLandAgent.",
+  "packageManager": "pnpm@10.17.1",
+  "scripts": {
+    "dev": "pnpm --dir dashboard exec next dev",
+    "dashboard": "pnpm --dir dashboard exec next dev",
+    "build": "pnpm --dir dashboard exec next build",
+    "typecheck": "pnpm --dir dashboard exec tsc --noEmit",
+    "install:dashboard": "pnpm --dir dashboard install"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
