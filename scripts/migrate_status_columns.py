@@ -8,23 +8,20 @@ from pathlib import Path
 
 DB = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "jobs.db"
 
-PIPELINE = {"new", "enriched", "screened", "enrich_failed", "screen_failed"}
-USER     = {"interesting", "not_interesting", "applied", "rejected",
-             "interviewing", "draft_ready", "archived", "offer"}
-
 con = sqlite3.connect(DB)
 con.row_factory = sqlite3.Row
 
 # Add columns if missing
 existing = {r[1] for r in con.execute("PRAGMA table_info(jobs)")}
-for col, defn in [
-    ("pipeline_status", "TEXT NOT NULL DEFAULT 'new'"),
-    ("user_status",     "TEXT"),
-    ("research_status", "TEXT"),
+for alter_sql in [
+    "ALTER TABLE jobs ADD COLUMN pipeline_status TEXT NOT NULL DEFAULT 'new'",
+    "ALTER TABLE jobs ADD COLUMN user_status TEXT",
+    "ALTER TABLE jobs ADD COLUMN research_status TEXT",
 ]:
-    if col not in existing:
-        con.execute(f"ALTER TABLE jobs ADD COLUMN {col} {defn}")
-        print(f"Added column {col}")
+    col_name = alter_sql.split("ADD COLUMN ")[1].split()[0]
+    if col_name not in existing:
+        con.execute(alter_sql)
+        print(f"Added column {col_name}")
 
 # Migrate pipeline statuses
 con.execute("""
