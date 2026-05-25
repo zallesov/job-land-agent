@@ -313,7 +313,7 @@ async function saveNote() {
       {/* ── ZONE 3: Status command bar ── */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "auto auto auto auto 1fr auto",
+        gridTemplateColumns: "auto auto auto auto 1fr",
         gap: 0,
         borderBottom: `2px solid ${accent}`,
         background: "var(--surface-hi)",
