@@ -240,15 +240,3 @@ export function createScreenCommand(jobId: number): { commandId: number; existin
   ).run(JSON.stringify({ job_id: jobId }));
   return { commandId: result.lastInsertRowid as number, existing: false };
 }
-
-export function createApplyCommand(jobId: number): { commandId: number; existing: boolean } {
-  const db = getDb();
-  const existing = db.prepare(
-    "SELECT id FROM agent_commands WHERE command_type = 'apply_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
-  ).get(jobId) as { id: number } | undefined;
-  if (existing) return { commandId: existing.id, existing: true };
-  const result = db.prepare(
-    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('apply_job', ?, 'pending', 'ui')"
-  ).run(JSON.stringify({ job_id: jobId }));
-  return { commandId: result.lastInsertRowid as number, existing: false };
-}

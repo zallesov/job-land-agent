@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createResearchCommand, createApplyCommand, getDb } from "@/lib/db";
+import { createResearchCommand, createScreenCommand, getDb } from "@/lib/db";
 import { spawn } from "child_process";
 import { openSync } from "fs";
 import path from "path";
 
-const ALLOWED_COMMANDS = new Set(["research_job", "apply_job"]);
-const HERMES = "/Users/zall/.local/bin/interviewprep";
+const ALLOWED_COMMANDS = new Set(["research_job", "screen_job"]);
+const HERMES = "/Users/zall/.local/bin/hermes";
 
 const COMMAND_CONFIG: Record<string, { skill: string; logDir: string; promptFn: (jobId: number, commandId: number, dbPath: string) => string }> = {
   research_job: {
@@ -13,10 +13,10 @@ const COMMAND_CONFIG: Record<string, { skill: string; logDir: string; promptFn: 
     logDir: "research-logs",
     promptFn: (jobId, commandId, dbPath) => `Research job_id=${jobId} command_id=${commandId} db=${dbPath}`,
   },
-  apply_job: {
-    skill: "apply-job",
-    logDir: "apply-logs",
-    promptFn: (jobId, commandId, dbPath) => `Apply job_id=${jobId} command_id=${commandId} db=${dbPath}`,
+  screen_job: {
+    skill: "screen-job",
+    logDir: "screen-logs",
+    promptFn: (jobId, commandId, dbPath) => `Screen job_id=${jobId} command_id=${commandId} db=${dbPath}`,
   },
 };
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const job = db.prepare("SELECT id FROM jobs WHERE id = ?").get(job_id);
   if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
-  const createCmd = command_type === "apply_job" ? createApplyCommand : createResearchCommand;
+  const createCmd = command_type === "screen_job" ? createScreenCommand : createResearchCommand;
   const { commandId, existing } = createCmd(job_id);
   if (!existing) {
     const cfg = COMMAND_CONFIG[command_type];

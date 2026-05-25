@@ -108,7 +108,6 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [screening, setScreening] = useState(false);
-  const [applying, setApplying] = useState(false);
   const [currentUserStatus, setCurrentUserStatus] = useState<string | null>(null);
   const [currentPipelineStatus, setCurrentPipelineStatus] = useState<string>("new");
   const [currentResearchStatus, setCurrentResearchStatus] = useState<string | null>(null);
@@ -175,22 +174,6 @@ async function saveNote() {
     }
   }
 
-  async function handleApply() {
-    setApplying(true);
-    try {
-      await fetch("/api/commands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command_type: "apply_job", job_id: jobId }),
-      });
-      load();
-    } finally {
-      setApplying(false);
-    }
-  }
-
-  const canApply = assessment?.apply_verdict === "Strong Apply" || assessment?.apply_verdict === "Apply with Caution";
-
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 48 }}>
 
@@ -235,21 +218,11 @@ async function saveNote() {
           </a>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          {currentPipelineStatus === "screened" && (
-            <CommandButton jobId={jobId} commands={commands ?? []} onDone={load} compact />
-          )}
           {(currentPipelineStatus === "enriched" || currentPipelineStatus === "new" || currentPipelineStatus === "screen_failed") && (
             <button onClick={handleScreen} disabled={screening}
               className="font-data text-xs font-medium rounded px-3 py-1 transition-colors disabled:opacity-40"
               style={{ background: "var(--amber)", color: "#000" }}>
               {screening ? "…" : "Screen"}
-            </button>
-          )}
-          {canApply && (
-            <button onClick={handleApply} disabled={applying}
-              className="font-data text-xs font-medium rounded px-3 py-1 transition-colors disabled:opacity-40"
-              style={{ background: "var(--green)", color: "#000" }}>
-              {applying ? "…" : "Apply"}
             </button>
           )}
           {confirmDelete ? (
@@ -483,7 +456,13 @@ async function saveNote() {
               </div>
             </div>
             <div style={{ padding: "20px 24px" }}>
-              <SectionLabel>Company</SectionLabel>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-data text-xs font-semibold tracking-widest uppercase"
+                  style={{ color: "var(--text-3)", letterSpacing: "0.12em" }}>Company</div>
+                {currentPipelineStatus === "screened" && currentResearchStatus !== "researched" && !job.is_researching && (
+                  <CommandButton jobId={jobId} commands={commands ?? []} onDone={load} compact />
+                )}
+              </div>
               <div className="space-y-2">
                 {research ? (
                   <>
