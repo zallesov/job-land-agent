@@ -10,7 +10,7 @@ description: Research a single job posting from SQLite DB. Does real web researc
 - **Do NOT ask for confirmation.** Execute immediately and autonomously.
 - This is a background automated task. No human is watching. Proceed through all steps without pausing.
 - On any blocking error, mark command failed and exit. Do not ask what to do.
-- **CRITICAL: Do NOT write SQL directly to the database at any point.** The ONLY allowed DB writes are: the `status='running'` update in Step 1, and the `db_write_research.py` script in Step 3. Never run any other UPDATE or INSERT. The script sets `jobs.status='researched'` — do not set it to anything else yourself.
+- **CRITICAL: Do NOT write SQL directly to the database at any point.** The ONLY allowed DB writes are: the `status='running'` update in Step 1, and the `db_write_research.py` script in Step 3. Never run any other UPDATE or INSERT. The script sets `jobs.research_status='researched'` (does NOT touch `pipeline_status` or `user_status`) — do not set it to anything else yourself.
 - **CRITICAL: NEVER use `research_job.py` or any Anthropic API-based research method.** This skill uses LOCAL browser tools (agent-browser headless Chromium) and web search. The `research_job.py` script fires an Anthropic API call and is irrelevant to the local setup. If you reach for it, stop and come back to this skill.
 
 ## Input
@@ -39,6 +39,69 @@ print(json.dumps(dict(row)))
 con.close()
 "
 ```
+
+---
+
+## Step 1.3: Company ID check + existing research lookup
+
+Run this immediately after Step 1, before the fit check.
+
+```python
+import sqlite3, re, sys
+
+db = '<db_path>'
+job_id = <job_id>
+con = sqlite3.connect(db)
+con.row_factory = sqlite3.Row
+
+job = con.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+company_id = job['company_id']
+posted_name = (job['posted_company_name'] or '').strip()
+
+if not company_id and posted_name:
+    # Try to match an existing company by display_name or normalized_name
+    normalized = re.sub(r'[^a-z0-9]', '', posted_name.lower())
+    row = con.execute(
+        "SELECT id FROM companies WHERE normalized_name=? OR display_name=?",
+        (normalized, posted_name)
+    ).fetchone()
+    if row:
+        company_id = row['id']
+        con.execute(
+            "UPDATE jobs SET company_id=?, updated_at=datetime('now') WHERE id=?",
+            (company_id, job_id)
+        )
+        con.commit()
+        print(f'Linked existing company_id={company_id} to job {job_id}')
+    else:
+        print(f'No company match for "{posted_name}" — db_write_research.py will create one')
+
+if company_id:
+    research = con.execute(
+        'SELECT * FROM company_research WHERE company_id=?', (company_id,)
+    ).fetchone()
+    if research:
+        print(f'Existing research found for company_id={company_id}')
+        print(dict(research))
+        # Signal: SKIP Step 2
+    else:
+        print(f'company_id={company_id} linked but no research yet — proceed to Step 2')
+else:
+    print('No company_id resolved — proceed to Step 2')
+
+con.close()
+```
+
+### If existing research found → skip Step 2
+
+Do NOT redo web research. Instead:
+- Use the existing `company_research` fields for all company data (copy `legitimacy_check`, `employee_count`, `hq_location`, `funding_summary`, `trustworthiness_score`, etc. from the DB row printed above)
+- Produce the Step 3 JSON with those values, plus a fresh job-specific assessment (`relevance_score`, `apply_verdict`, `seniority_fit`, `tech_stack_fit`, `salary_assessment`, `remote_eligibility`) from the job description
+- Run `db_write_research.py` normally — it detects the existing `company_research` row and skips the INSERT, only writing `job_assessments`
+
+### If no research → proceed to Step 1.5 then Step 2
+
+`db_write_research.py` will INSERT into `company_research` using the `company_id` you linked above (or create a new company row if `company_id` is still NULL).
 
 ---
 
@@ -152,7 +215,11 @@ Use web search tools to research the company and role. Research sources in order
 
 ### E. Role Assessment
 
-Read the user's profile from `config/user.yaml` (cv_path, work_style, locations, **user_preferences**) before scoring. The scoring dimensions below apply generically, but `user_preferences` (a free-text field) should inform judgement — e.g. "only IC roles" → IC score higher; "no startups" → early-stage or unfunded companies score lower; "no crypto" → crypto-adjacent roles get a red flag.
+Read the user's profile from `config/user.yaml` (cv_path, work_style, locations, **job_preferences**, **languages**, **desired_salary**) before scoring. These free-text fields are hard constraints — apply them to the verdict:
+- `job_preferences`: "no fintech" → fintech role = Skip; "startups only" → enterprise = lower score; "IC only" → management role = Skip
+- `languages`: if the job requires a language not listed here → Skip or Apply with Caution
+- `desired_salary`: if the posted salary is clearly below this figure, downgrade verdict to "Skip" or "Apply with Caution"
+- If any field is empty, ignore it
 
 - Seniority fit: is it a Principal/Senior IC or high-impact staff role?
 - Tech stack overlap: AI, cloud, full-stack, backend, architecture, platform, engineering leadership
@@ -214,7 +281,7 @@ Produce a JSON object matching this schema **exactly**. Use only the allowed enu
   "seniority_fit": "strong_fit | good_fit | stretch | mismatch",
   "tech_stack_fit": "string",
   "salary_range": "90-120K EUR | 90-120K USD | Not found",
-  "salary_assessment": "string or Not found",
+  "salary_assessment": "string or Not found — compare posted salary against desired_salary from config/user.yaml; flag if clearly below or 'Not found'",
   "remote_eligibility": "eligible | not_eligible | unclear",
   "research_notes": "string",
   "apply_url": "https://... direct application URL or Not found",
@@ -232,7 +299,20 @@ python3 scripts/db_write_research.py \
   < tmp/research_<job_id>.json
 ```
 
-The script sets `jobs.status='researched'`, marks the command `succeeded`, closes any pending scrape command, and sends Telegram notification. **Do not do any of this manually or with SQL.**
+The script sets `jobs.research_status='researched'`, marks the command `succeeded`, closes any pending scrape command, and sends Telegram notification. **Do not do any of this manually or with SQL.**
+
+### After writing: Track visited company
+
+After research completes, add the company to `visited_companies.json` to prevent redundant research in future sessions:
+
+```python
+import json
+vc = json.load(open('visited_companies.json'))
+vc['company_slug'] = {'checked_at': '<today>', 'company': '<Name>', 'url': '<url>', 'verdict': '<verdict>'}
+json.dump(vc, open('visited_companies.json', 'w'), indent=2)
+```
+
+Check this file before researching any company — skip companies already marked as checked.
 
 ---
 
@@ -368,9 +448,20 @@ This returns structured news items with dates — ideal for risk scanning (layof
 7. Crunchbase (attempt; if blocked, mark `Not found` and continue)
 7. DuckDuckGo/Bing searches (use sparingly — rate-limited quickly)
 
+### LinkedIn: Wrong Company on Generic Names
+
+For companies with common names (ClickHouse, Maze, Pack, etc.), LinkedIn's `/company/<name>` URL may resolve to an unrelated company with the same name. The actual company page often uses a different slug like `/company/<name>inc/` or `/company/<name>hq/`.
+
+**Fix:** If a LinkedIn company page shows an obviously wrong description (e.g. "Construction" for a database company), check:
+1. The actual company website's footer for their LinkedIn URL
+2. Search LinkedIn for the exact company name
+3. Try `/company/<name>inc/`, `/company/<name>hq/`, `/company/<name>official/` variations
+4. If still not found, write "Not found" and continue
+
 ### Silent company_research skip when company_id is null
 
-When a job row has `company_id IS NULL` (common for newly scraped jobs that haven't been matched to a company record), `db_write_research.py` skips the `company_research` INSERT entirely (line 46: `if company_id:`). The research data still lands in `job_assessments.raw_assessment_json`, but there is no dedicated company_research row. This is by design — company_research is keyed by company_id, not job_id. If you need the company research persisted standalone, set `company_id` on the job row first.
+`db_write_research.py` skips the `company_research` INSERT when `job.company_id IS NULL`. **Step 1.3 prevents this** by linking the job to an existing company (or letting `db_write_research.py` create a new one) before research runs. If you skipped Step 1.3 and company_research is missing, link the company manually then re-run `db_write_research.py`.
+
 
 ## Error Handling
 
