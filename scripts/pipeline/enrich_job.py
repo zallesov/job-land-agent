@@ -7,6 +7,7 @@ from .types import HermesResult
 
 _DEFAULT_DB = str(Path(__file__).parent.parent.parent / "jobs.db")
 _DEFAULT_CDP = "http://localhost:9222"
+hermes_call = None
 
 
 def _extract_page(page) -> dict:
@@ -70,31 +71,50 @@ def enrich_job(
             return HermesResult(success=False, data={}, error=f"job {job_id} not found", raw_output="")
 
         url = job["url"]
+        context = {
+            "job_id": job_id,
+            "url": url,
+            "cv_path": str(Path(__file__).parent.parent.parent / "config" / "cv.md"),
+        }
 
-        try:
-            from playwright.sync_api import sync_playwright  # noqa: PLC0415
-            with sync_playwright() as pw:
-                browser = pw.chromium.connect_over_cdp(cdp_url)
-                ctx = browser.contexts[0]
-                page = ctx.new_page()
-                page.bring_to_front()
-                try:
-                    page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        if callable(hermes_call):
+            result = hermes_call("enrich-job", context)
+            if not result.success:
+                update_job_status(con, job_id, "enrich_failed", comment=result.error)
+                con.commit()
+                return result
+            data = result.data
+        else:
+            try:
+                from playwright.sync_api import sync_playwright  # noqa: PLC0415
+                with sync_playwright() as pw:
+                    browser = pw.chromium.connect_over_cdp(cdp_url)
+                    ctx = browser.contexts[0]
+                    page = ctx.new_page()
+                    page.bring_to_front()
                     try:
-                        page.wait_for_selector("h1", timeout=8000)
-                    except Exception:
-                        pass
-                    page.wait_for_timeout(500)
-                    data = _extract_page(page)
-                finally:
-                    page.close()
-        except Exception as e:
-            err = str(e)[:300]
-            update_job_status(con, job_id, "enrich_failed", comment=err)
-            con.commit()
-            return HermesResult(success=False, data={}, error=err, raw_output="")
+                        page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                        try:
+                            page.wait_for_selector("h1", timeout=8000)
+                        except Exception:
+                            pass
+                        page.wait_for_timeout(500)
+                        data = _extract_page(page)
+                    finally:
+                        page.close()
+            except Exception as e:
+                err = str(e)[:300]
+                update_job_status(con, job_id, "enrich_failed", comment=err)
+                con.commit()
+                return HermesResult(success=False, data={}, error=err, raw_output="")
 
-        if not data.get("description") or len(data["description"]) < 100:
+        description = data.get("description") or ""
+        title = data.get("title") or None
+        apply_url = data.get("applyUrl") or data.get("apply_url") or None
+        salary_range = data.get("salaryRaw") or data.get("salary_range") or None
+        date_posted = data.get("datePosted") or data.get("date_posted") or None
+
+        if not callable(hermes_call) and (not description or len(description) < 100):
             err = "extraction failed: description too short"
             update_job_status(con, job_id, "enrich_failed", comment=err)
             con.commit()
@@ -105,10 +125,9 @@ def enrich_job(
                description = ?, apply_url = ?,
                salary_range = COALESCE(?, salary_range),
                date_posted = COALESCE(?, date_posted),
-               status = 'enriched', updated_at = datetime('now')
+               status = 'new', updated_at = datetime('now')
                WHERE id = ?""",
-            (data.get("title") or None, data["description"], data.get("applyUrl"),
-             data.get("salaryRaw") or None, data.get("datePosted") or None, job_id),
+            (title, description, apply_url, salary_range, date_posted, job_id),
         )
         con.commit()
         return HermesResult(success=True, data=data, error=None, raw_output="")

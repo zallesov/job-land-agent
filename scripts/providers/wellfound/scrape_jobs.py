@@ -7,6 +7,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
+from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
@@ -30,6 +31,23 @@ COUNTRY_TO_CONTINENT: dict[str, str] = {
     "MX": "Mexico",
     "ZA": "South Africa",
 }
+
+
+def _parse_args(*args, titles=None, db_path=None, _config=None):
+    if not args:
+        raise TypeError("scrape_jobs() missing required positional argument: cdp_url")
+    cfg = _config if _config is not None else _load_config()
+    if isinstance(args[0], dict):
+        if len(args) < 2:
+            raise TypeError("scrape_jobs() missing required cdp_url argument")
+        cdp_url = args[1]
+        locations = [args[0]]
+        explicit_location = True
+    else:
+        cdp_url = args[0]
+        locations = cfg.get("locations", [])
+        explicit_location = False
+    return cdp_url, cfg, locations, titles, db_path, explicit_location
 
 
 def _load_config() -> dict:
@@ -247,19 +265,23 @@ def collect_wellfound(page, country: str) -> list[dict]:
 
 
 def scrape_jobs(
-    cdp_url: str,
+    *args,
     titles: list[str] | None = None,
     db_path: str | None = None,
     _config: dict | None = None,
 ) -> list[ShallowJob]:
-    cfg = _config if _config is not None else _load_config()
+    cdp_url, cfg, locations, titles, db_path, explicit_location = _parse_args(
+        *args, titles=titles, db_path=db_path, _config=_config
+    )
     work_style: str = cfg.get("work_style", {}).get("preferred", "remote")
     remote = work_style == "remote"
     search_terms: list[str] = titles or cfg.get("search_terms") or ["Software Engineer"]
 
-    configured_locations: list[dict] = cfg.get("locations", [])
+    configured_locations: list[dict] = locations
 
-    if remote:
+    if explicit_location:
+        wellfound_locations = [f"{loc['city']}, {loc['country']}" for loc in configured_locations]
+    elif remote:
         seen: set[str] = set()
         wellfound_locations: list[str] = []
         for loc in configured_locations:
@@ -316,6 +338,7 @@ def scrape_jobs(
     for r in raw_rows:
         if not r.get("title") or not r.get("company"):
             continue
+        status = "listed" if is_relevant(r) else "skip"
         j = ShallowJob(
             provider="wellfound",
             title=r["title"],
@@ -326,7 +349,7 @@ def scrape_jobs(
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salaryRaw") or None,
-            status="new",
+            status=status,
         )
         jobs.append(j)
 

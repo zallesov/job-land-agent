@@ -142,7 +142,7 @@ def test_hirify_references_are_present_in_static_integration_files():
     expected = {
         "config/user.yaml.example": "hirify:",
         "skills/onboarding/SKILL.md": "Hirify",
-        "skills/run-scraping-pipeline/SKILL.md": "hirify",
+        "skills/job-pipeline/SKILL.md": "job-pipeline",
         "README.md": "Hirify",
         "dashboard/app/components/JobList.tsx": "hirify:",
     }

@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.pipeline.dedup import dedup_jobs
 from scripts.pipeline.ingest import ingest_jobs
 from scripts.pipeline.enrich_job import enrich_job
-from scripts.pipeline.screen_jobs_batch import screen_jobs_batch
+from scripts.pipeline.screen_job import screen_job
 from scripts.pipeline.notify import send_daily_digest
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,6 +41,7 @@ def run(
     cdp_url: str = DEFAULT_CDP,
     db_path: str = DEFAULT_DB,
     titles: list[str] | None = None,
+    location: dict | None = None,
     _check_auth=None,
     _scrape_jobs=None,
 ) -> None:
@@ -52,7 +53,10 @@ def run(
     _check_auth(cdp_url)
 
     try:
-        raw_jobs = _scrape_jobs(cdp_url, titles=titles, db_path=db_path)
+        if location is not None:
+            raw_jobs = _scrape_jobs(location, cdp_url, titles=titles, db_path=db_path)
+        else:
+            raw_jobs = _scrape_jobs(cdp_url, titles=titles, db_path=db_path)
     except Exception as e:
         from scripts.telegram_notify import pipeline_failure
         pipeline_failure(provider, "scrape", str(e), "")
@@ -70,7 +74,7 @@ def run(
     enriched_ids: list[int] = []
     for i, job_id in enumerate(job_ids, 1):
         print(f"[enrich] {i}/{len(job_ids)} job_id={job_id}", flush=True)
-        result = enrich_job(job_id, db_path=db_path, cdp_url=cdp_url)
+        result = enrich_job(job_id, db_path=db_path)
         if result.success:
             title = (result.data.get("title") or "")[:60]
             print(f"[enrich] OK  job_id={job_id}  title={title!r}", flush=True)
@@ -79,8 +83,13 @@ def run(
             print(f"[enrich] FAIL  job_id={job_id}  error={result.error}", flush=True)
             enrich_failures.append((job_id, result.error or "unknown"))
 
-    print(f"[screen] screening {len(enriched_ids)} jobs (up to 5 parallel)", flush=True)
-    _, screen_failures = screen_jobs_batch(enriched_ids, db_path=db_path, max_workers=5)
+    print(f"[screen] screening {len(enriched_ids)} jobs", flush=True)
+    screen_failures: list[tuple[int, str]] = []
+    for i, job_id in enumerate(enriched_ids, 1):
+        print(f"[screen] {i}/{len(enriched_ids)} job_id={job_id}", flush=True)
+        result = screen_job(job_id, db_path=db_path)
+        if not result.success:
+            screen_failures.append((job_id, result.error or "unknown"))
 
     send_daily_digest(enrich_failures=enrich_failures, screen_failures=screen_failures)
 

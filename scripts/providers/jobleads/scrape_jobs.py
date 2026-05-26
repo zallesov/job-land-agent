@@ -7,10 +7,26 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
+from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 JOBLEADS_BASE = "https://www.jobleads.com/search/jobs"
+
+
+def _parse_args(*args, titles=None, db_path=None, _config=None):
+    if not args:
+        raise TypeError("scrape_jobs() missing required positional argument: cdp_url")
+    cfg = _config if _config is not None else _load_config()
+    if isinstance(args[0], dict):
+        if len(args) < 2:
+            raise TypeError("scrape_jobs() missing required cdp_url argument")
+        cdp_url = args[1]
+        locations = [args[0]]
+    else:
+        cdp_url = args[0]
+        locations = cfg.get("locations", [])
+    return cdp_url, cfg, locations, titles, db_path
 
 
 def _load_config() -> dict:
@@ -100,13 +116,14 @@ def collect_jobleads(page, search: dict) -> list[dict]:
 
 
 def scrape_jobs(
-    cdp_url: str,
+    *args,
     titles: list[str] | None = None,
     db_path: str | None = None,
     _config: dict | None = None,
 ) -> list[ShallowJob]:
-    cfg = _config if _config is not None else _load_config()
-    locations: list[dict] = cfg.get("locations", [])
+    cdp_url, cfg, locations, titles, db_path = _parse_args(
+        *args, titles=titles, db_path=db_path, _config=_config
+    )
     if not locations:
         return []
 
@@ -145,6 +162,7 @@ def scrape_jobs(
     for r in all_raw:
         if not r.get("title") or not r.get("company"):
             continue
+        status = "listed" if is_relevant(r) else "skip"
         j = ShallowJob(
             provider="jobleads",
             title=r["title"],
@@ -155,7 +173,7 @@ def scrape_jobs(
             dedup_key=f"{r['company']}::{r['title']}",
             posting_date=None,
             salary_raw=r.get("salaryRaw") or None,
-            status="new",
+            status=status,
         )
         jobs.append(j)
 

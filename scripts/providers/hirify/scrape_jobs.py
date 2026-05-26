@@ -8,6 +8,7 @@ from playwright.sync_api import sync_playwright
 
 from scripts.pipeline.types import ShallowJob
 from scripts.providers.hirify.cdp_fallback import CdpPage
+from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 HIRIFY_BASE = "https://hirify.me"
@@ -42,19 +43,22 @@ def _normalize_raw_job(raw: dict) -> ShallowJob:
         dedup_key=f"{company}::{title}",
         posting_date=None,
         salary_raw=(raw.get("salaryRaw") or None),
-        status="new",
+        status="listed",
     )
 
 
-def _get_saved_filter_options(page) -> list[str]:
-    """Open the saved-filter combobox and return all option labels."""
+def _get_saved_filters(page) -> list[dict]:
+    """Open the saved-filter combobox and return option metadata."""
     combo = page.locator('[role="combobox"]').first
     combo.click()
     page.wait_for_timeout(1000)
     options = page.evaluate(
-        """() => Array.from(document.querySelectorAll('[role="option"]'))
-               .map(el => (el.innerText || '').trim())
-               .filter(Boolean)"""
+        """() => {
+               // saved filters dropdown options
+               return Array.from(document.querySelectorAll('[role="option"]'))
+               .map((el, index) => ({ index, label: (el.innerText || '').trim() }))
+               .filter(item => item.label);
+        }"""
     )
     # Close by pressing Escape
     page.keyboard.press("Escape")
@@ -62,8 +66,13 @@ def _get_saved_filter_options(page) -> list[str]:
     return options
 
 
-def _select_saved_filter(page, label: str) -> None:
+def _get_saved_filter_options(page) -> list[dict]:
+    return _get_saved_filters(page)
+
+
+def _activate_saved_filter(page, filter_info) -> None:
     """Select a saved filter by label from the combobox dropdown."""
+    label = filter_info["label"] if isinstance(filter_info, dict) else str(filter_info)
     combo = page.locator('[role="combobox"]').first
     combo.click()
     page.wait_for_timeout(1000)
@@ -77,6 +86,10 @@ def _select_saved_filter(page, label: str) -> None:
         label,
     )
     page.wait_for_timeout(2000)
+
+
+def _select_saved_filter(page, label: str) -> None:
+    _activate_saved_filter(page, label)
 
 
 def _collect_current_page_jobs(page) -> list[dict]:
@@ -185,7 +198,7 @@ def _scrape_jobs_from_page(page) -> list[ShallowJob]:
 
     page.goto(HIRIFY_BASE, wait_until="domcontentloaded", timeout=30000)
     page.wait_for_timeout(2000)
-    filter_labels = _get_saved_filter_options(page)
+    filter_labels = _get_saved_filters(page)
     if not filter_labels:
         print(
             "[hirify] No saved filters found. Create saved filters on https://hirify.me/ first.",
@@ -193,9 +206,9 @@ def _scrape_jobs_from_page(page) -> list[ShallowJob]:
             flush=True,
         )
         return []
-    for label in filter_labels:
+    for filter_info in filter_labels:
         try:
-            _select_saved_filter(page, label)
+            _activate_saved_filter(page, filter_info)
             for row in _scrape_filter_pages(page):
                 url = _canonical_url(row.get("url") or "")
                 if url and url not in seen_urls:
@@ -204,7 +217,7 @@ def _scrape_jobs_from_page(page) -> list[ShallowJob]:
                     raw_rows.append(row)
         except Exception as e:
             print(
-                f"[hirify] WARNING: saved filter {label!r} failed: {e}",
+                f"[hirify] WARNING: saved filter {filter_info!r} failed: {e}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -213,7 +226,10 @@ def _scrape_jobs_from_page(page) -> list[ShallowJob]:
     for row in raw_rows:
         if not row.get("title") or not row.get("url"):
             continue
-        jobs.append(_normalize_raw_job(row))
+        job = _normalize_raw_job(row)
+        if not is_relevant(row):
+            job.status = "skip"
+        jobs.append(job)
     return jobs
 
 
