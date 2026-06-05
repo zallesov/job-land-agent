@@ -30,7 +30,7 @@ An autonomous job search assistant for software engineers. Scrapes job boards, e
 Install this repo as a Hermes profile distribution:
 
 ```bash
-hermes profile install github.com/<you>/joblandagent --alias
+hermes profile install github.com/zallesov/job-land-agent --alias
 ```
 
 Set the required model key in your shell environment:
@@ -63,7 +63,7 @@ The installed profile is self-contained. Hermes is configured with `terminal.cwd
 **1. Clone and install a local profile**
 
 ```bash
-git clone https://github.com/<you>/joblandagent
+git clone https://github.com/zallesov/job-land-agent
 cd joblandagent
 tmpdir=$(mktemp -d)
 for p in distribution.yaml SOUL.md config.yaml .env.EXAMPLE README.md package.json pnpm-lock.yaml pnpm-workspace.yaml requirements.txt start-chrome.sh config skills scripts dashboard; do
@@ -184,6 +184,7 @@ PORT=3717 pnpm run dev
 |---|---|
 | Scrape jobs | "run scraping" in Hermes |
 | Scrape specific source | "run greenhouse berlin" |
+| Import spreadsheet jobs | `/job-pipeline/import-from-spreadsheet` |
 | Add job by URL | Paste any job URL in Hermes or Telegram |
 | Research a job | "research job 42" |
 | Apply to a job | "apply to job 42" — fills form, does NOT submit |
@@ -201,6 +202,7 @@ PORT=3717 pnpm run dev
 | [Wellfound](https://wellfound.com) | UI-based | Startup-focused |
 | [Sprout](https://usesprout.com) | UI-based | EU-focused |
 | [Hirify](https://hirify.me) | Saved-filter UI | IT and Digital aggregator; user-managed saved filters |
+| CSV feed | Import-only | Temporary spreadsheet import via `tmp/filtered_dev.csv`; not enabled in the default provider set |
 
 ---
 
