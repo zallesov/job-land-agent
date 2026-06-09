@@ -74,7 +74,7 @@ if not company_id and posted_name:
         con.commit()
         print(f'Linked existing company_id={company_id} to job {job_id}')
     else:
-        print(f'No company match for "{posted_name}" — db_write_research.py will create one')
+        print(f'No company match for "{posted_name}" — create a company row manually before Step 3')
 
 if company_id:
     research = con.execute(
@@ -101,7 +101,20 @@ Do NOT redo web research. Instead:
 
 ### If no research → proceed to Step 1.5 then Step 2
 
-`db_write_research.py` will INSERT into `company_research` using the `company_id` you linked above (or create a new company row if `company_id` is still NULL).
+**Important:** `db_write_research.py` does NOT create company rows. It only inserts into `company_research` when `job.company_id` is already set and non-null. If `company_id` is NULL, the `company_research` INSERT is silently skipped (only `job_assessments` is written). If you want company research tracked, create the company manually before running `db_write_research.py`:
+
+```python
+import sqlite3, re
+con = sqlite3.connect('jobs.db')
+normalized = re.sub(r'[^a-z0-9]', '', company_name.lower())
+con.execute("INSERT INTO companies (display_name, normalized_name, website_url, created_at, updated_at) VALUES (?,?,?,datetime('now'),datetime('now'))", (company_name, normalized, website_url))
+company_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+con.execute("UPDATE jobs SET company_id=?, updated_at=datetime('now') WHERE id=?", (company_id, job_id))
+con.commit()
+con.close()
+```
+
+Then run `db_write_research.py` and it will insert into `company_research` using the linked `company_id`.
 
 ---
 
@@ -458,6 +471,26 @@ For companies with common names (ClickHouse, Maze, Pack, etc.), LinkedIn's `/com
 ### Silent company_research skip when company_id is null
 
 `db_write_research.py` skips the `company_research` INSERT when `job.company_id IS NULL`. **Step 1.3 prevents this** by linking the job to an existing company (or letting `db_write_research.py` create a new one) before research runs. If you skipped Step 1.3 and company_research is missing, link the company manually then re-run `db_write_research.py`.
+
+### Missing `clutch_summary` column in DB schema
+
+`db_write_research.py` references a `clutch_summary` column in its `INSERT INTO company_research` statement, but the `create_db()` function in `scripts/db.py` does not create this column. If you run `db_write_research.py` on a DB initialized from scratch, you'll get:
+```
+sqlite3.OperationalError: table company_research has no column named clutch_summary
+```
+
+**Fix**: Add the column to the running DB:
+```bash
+python3 -c "
+from scripts.db import get_connection
+con = get_connection('jobs.db')
+con.execute('ALTER TABLE company_research ADD COLUMN clutch_summary TEXT')
+con.commit()
+con.close()
+"
+```
+
+The schema file (`scripts/db.py:create_db()`) also lacks this column — you may need to add it there for future fresh DBs, but `ALTER TABLE` on the existing DB is sufficient to unblock the current research write.
 
 
 ## Error Handling

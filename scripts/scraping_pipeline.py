@@ -33,7 +33,7 @@ from scripts.pipeline.notify import send_daily_digest
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
-PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout", "hirify"}
+PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout", "hirify", "csvfeed"}
 
 
 def run(

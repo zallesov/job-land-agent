@@ -46,7 +46,7 @@ If `NOT_RUNNING`: tell user to run `bash start-chrome.sh`. Do not proceed.
 # Run one provider
 python3 scripts/scraping_pipeline.py --provider <name>
 
-# Providers: greenhouse | jobleads | wellfound | sprout | hirify
+# Providers: greenhouse | jobleads | wellfound | sprout | hirify | csvfeed
 ```
 
 Active providers read from `config/user.yaml` → `providers:`. Skip disabled ones.
@@ -113,9 +113,38 @@ check_auth → scrape_jobs → dedup_jobs → ingest_jobs → enrich_job (per jo
 `scripts/pipeline/screen_job.py` — Hermes `screen-job` skill call per job. Reads CV + job description, produces `apply_verdict` + `relevance_score`. Writes to `job_assessments`. Sets `status='screened'`.
 
 ### 7. `send_daily_digest`
-Telegram notification with enrich/screen failure counts.
+### No success notification
 
----
+`send_daily_digest()` only fires when there are failures (line 21-22: `if not enrich_failures and not screen_failures: return`). Successful pipeline runs produce NO Telegram notification. Batch screening via `pipeline.screen_jobs_batch` also produces no notification from the pipeline itself — but the individual `screen_job.py` now sends per-job Telegram notifications via `_notify_screened()`.
+
+### `posted_company_name` may be empty
+
+Jobs ingested from some sources (csvfeed with missing data, malformed scrapes) can have an empty `posted_company_name`. Searching by company name will miss them. Always use URL or id for reliable lookup:
+
+```sql
+SELECT id, title, url FROM jobs WHERE url LIKE '%frontcareers%';
+-- or
+SELECT id, title, posted_company_name FROM jobs WHERE id=2515;
+```
+
+When a user says "find job at company X" and no results match, check both the URL pattern AND do a broader search — the company field might be blank even though the URL clearly identifies the employer.
+
+### Prefer existing pipeline scripts over ad-hoc wrappers
+
+When the pipeline has a script for a job — `db_write_job_fields.py`, `db_write_research.py`, `pipeline.screen_jobs_batch`, `pipeline.screen_job`, `pipeline.ingest`, `pipeline.dedup`, `pipeline.enrich_job` — **use it directly**. Do NOT write wrapper scripts that call them from subprocess. The user will notice and correct you.
+
+The correct pattern for a batch loop:
+
+```bash
+# Loop over job IDs directly, don't write a Python wrapper
+for jid in $(sqlite3 jobs.db "SELECT id FROM jobs WHERE provider='csvfeed' AND status='enrich_failed'"); do
+  python3 scripts/db_write_job_fields.py --db jobs.db --job-id $jid < tmp/fields_$jid.json
+done
+```
+
+Or use the Python module directly in a single inline invocation (one-liner via `python3 -c "..."`) rather than a file-based script in `tmp/`.
+
+
 
 ## Per-Provider Notes
 
@@ -132,6 +161,32 @@ Telegram notification with enrich/screen failure counts.
   2. Anonymous mode — page loads normally but company names show as "Solo para miembros registrados". `_is_unauthenticated()` detects this via content scan, exits 10.
 - Both modes: tell user to log in at jobleads.com in Chrome, then re-run.
 - If bad jobs were ingested before detection: report to user, ask what to do. Never delete without explicit instruction.
+- **Do NOT rely on URL params for search.** `https://www.jobleads.com/search/jobs?...` and `view=for-you` are not a durable search API. They can land on empty recommendation feeds even when matching jobs exist.
+- **Correct scraping path:** open the plain jobs page (`https://www.jobleads.com/es/jobs` or the current locale's `/jobs` page), then drive the visible search UI:
+  - select country from the country dropdown list
+  - fill keyword/title
+  - fill city/location
+  - set Remote in the work-model dropdown when the user's work_style prefers remote
+  - submit the form and scrape the resulting list page
+- **Country dropdown pitfall:** if the desired country is already selected (for example Germany), skip the country-selection step entirely. Trying to re-select the already-active country can fail because the active country link is not meaningfully clickable in Playwright.
+- **Use config search_terms, not an empty query.** For JobLeads, loop over `config/user.yaml` `search_terms` and run one in-page search per term; deduplicate results by URL across searches.
+- **Selector/interaction pitfall:** the country chooser is not a normal editable select. The reliable pattern is to open the dropdown, type into the dropdown's own search input, then click the matching country entry from the rendered list. For some UI states, native Playwright `.click()` on the visible text can fail; a page-context `element.click()` on the matching country link is the fallback.
+- **Verification step:** after form submission, confirm the page actually changed to a search-results URL and contains job links before declaring "0 jobs". If the page body still shows only the generic feed or an empty-state recommendation page, the search interaction did not complete correctly.
+- See `references/jobleads-ui-search.md` for the concrete interaction pattern and failure modes.
+- **Do NOT rely on URL query params to drive JobLeads search.** `https://www.jobleads.com/search/jobs?...` / `view=for-you` is not a reliable search surface and can land on a zero-results state even when the real search UI has jobs.
+- Correct approach: open the plain jobs page (`https://www.jobleads.com/es/jobs` or the current locale equivalent), then fill the in-page controls: country, keyword, location, remote/work-model, then submit the form.
+- **Country selector pitfall:** if the desired country is already active in the country dropdown, skip the country-selection step entirely. Attempting to re-select the already-active country can fail because the active option is not interactable in the same way as inactive options.
+- For user-visible debugging, distinguish these cases clearly:
+  - reached the page but got zero matches after applying filters
+  - failed to drive the search UI / selectors changed
+  - auth failed
+- **Do NOT rely on URL params for search.** `https://www.jobleads.com/search/jobs?...` / `?view=for-you&...` is not the durable search flow here. Start from the plain jobs page (`https://www.jobleads.com/es/jobs` or the locale-specific equivalent), then drive the in-page search UI.
+- **Search flow must be UI-driven:** select country in the country dropdown, fill keyword, fill location, set remote/work-model in the UI, then submit the form. Do not hallucinate that `location_country`, `filter_by_remote`, or similar query params are sufficient.
+- **Country selection pitfall:** if the target country is already active, skip the country step. Re-selecting the already-active country can fail because the active link is hidden/detached after navigation. If country needs changing, typing into the country dropdown is only the filter step — you must click the actual country entry from the dropdown list.
+- **Selector pitfall:** JobLeads UI language can switch between German and English mid-session. Prefer `data-testid` / structural selectors over visible text for core inputs and controls.
+- **Search-page pitfall:** `https://www.jobleads.com/search/jobs` is not reliably controlled by query params alone. After login it may redirect to a localized results page like `/es/jobs?lastExecutedSearch=...`, and that redirected page can show real results even when the scraper's hardcoded `view=for-you&location_country=DE&filter_by_contractType=full_time&filter_by_remote=remote` URL returns `Für deine aktuellen Filter wurden keine Job-Matches gefunden`.
+- When the scraper says `No job links found for Berlin Remote`, do not assume the site has no jobs. Verify the real browser destination and page text first. The durable lesson is: JobLeads may require driving the in-page search / saved-search workflow instead of relying on direct URL construction.
+- See `references/jobleads-search-page.md`.
 
 ### Greenhouse
 - Reads locations from `config/user.yaml` → `locations[]`, builds `for-you` feed URL per location.
@@ -149,6 +204,31 @@ Telegram notification with enrich/screen failure counts.
 - Does NOT use `search_terms` or `locations` from config. Reads saved filters defined on hirify.me.
 - User must create saved filters on hirify.me first.
 - Iterates every saved filter, paginates through all results.
+
+### csvfeed (file-based)
+A local provider that reads jobs from a pre-filtered CSV file instead of scraping a real source.
+
+**When to use:** User provides a spreadsheet/curated job list and wants it ingested into the pipeline without CDP scraping. Common trigger: Google Sheets export of a job board's Development/Engineering tab.
+
+**Setup:**
+1. Export Google Sheet to CSV: `curl -sL "https://docs.google.com/spreadsheets/d/<ID>/export?format=csv&gid=<GID>"`
+2. Filter against user profile (seniority, location, role type, salary) into a second CSV
+3. Create `scripts/providers/csvfeed/check_auth.py` — always returns True (no-op)
+4. Create `scripts/providers/csvfeed/scrape_jobs.py` — reads filtered CSV, returns `list[ShallowJob]`
+5. Register in `scraping_pipeline.py` by adding `"csvfeed"` to the `PROVIDERS` set
+
+**Enrichment bypass:** csvfeed jobs already have descriptions from the CSV, but enrichment will fail if Chrome is down (it tries CDP). After ingest, use `db_write_job_fields.py` per job to write the CSV description to the DB, then reset status from `enrich_failed` to `new`:
+
+```bash
+python3 scripts/db_write_job_fields.py --db jobs.db --job-id <ID> < tmp/fields.json
+python3 -c "from scripts.db import get_connection; con=get_connection('jobs.db'); con.execute(\"UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE id=<ID>\"); con.commit(); con.close()"
+```
+
+Then run batch screening via `pipeline.screen_jobs_batch`.
+
+**CRITICAL: after ingesting via pipeline, always run post-ingest enrichment separately** — the pipeline tries CDP enrichment per job (slow, 1-at-a-time) and will fail if Chrome is not running. See `references/csvfeed-provider-pattern.md`.
+
+**Key constraint:** `ShallowJob` has no `description` field. Descriptions must be written post-ingest via `db_write_job_fields.py`. Do NOT write raw SQL to update descriptions — use the helper script.
 
 ---
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import httpx
@@ -190,6 +191,7 @@ def screen_job(job_id: int, db_path: str = _DEFAULT_DB) -> HermesResult:
             if result.success:
                 _upsert_assessment(con, job_id, result.data)
                 update_job_status(con, job_id, "screened")
+                _notify_screened(con, job_id, result.data)
             else:
                 update_job_status(con, job_id, "screen_failed", comment=result.error)
             con.commit()
@@ -214,6 +216,7 @@ def screen_job(job_id: int, db_path: str = _DEFAULT_DB) -> HermesResult:
             data = _local_assessment(dict(job))
             _upsert_assessment(con, job_id, data)
             update_job_status(con, job_id, "screened")
+            _notify_screened(con, job_id, data)
             con.commit()
             return HermesResult(success=True, data=data, error=None, raw_output="")
 
@@ -240,6 +243,7 @@ def screen_job(job_id: int, db_path: str = _DEFAULT_DB) -> HermesResult:
             data = _local_assessment(dict(job))
             _upsert_assessment(con, job_id, data)
             update_job_status(con, job_id, "screened")
+            _notify_screened(con, job_id, data)
             con.commit()
             return HermesResult(success=True, data=data, error=None, raw_output=str(e)[:300])
 
@@ -262,18 +266,53 @@ def screen_job(job_id: int, db_path: str = _DEFAULT_DB) -> HermesResult:
             data = _local_assessment(dict(job))
             _upsert_assessment(con, job_id, data)
             update_job_status(con, job_id, "screened")
+            _notify_screened(con, job_id, data)
             con.commit()
             return HermesResult(success=True, data=data, error=None, raw_output=f"parse error: {e}")
 
         if success:
             _upsert_assessment(con, job_id, data)
             update_job_status(con, job_id, "screened")
+            _notify_screened(con, job_id, data)
         else:
             update_job_status(con, job_id, "screen_failed", comment=data.get("error"))
         con.commit()
         return HermesResult(success=success, data=data, error=data.get("error"), raw_output=raw)
     finally:
         con.close()
+
+
+def _notify_screened(con, job_id: int, data: dict) -> None:
+    """Send Telegram notification for a screened job."""
+    try:
+        job = con.execute(
+            "SELECT title, posted_company_name, location, salary_range FROM jobs WHERE id=?",
+            (job_id,),
+        ).fetchone()
+        if not job:
+            return
+        title = job["title"] or "?"
+        company = job["posted_company_name"] or "?"
+        location = job["location"] or "?"
+        verdict = data.get("apply_verdict", "?")
+        score = data.get("relevance_score", "?")
+        salary = job["salary_range"] or "n/a"
+        summary = (data.get("one_line_summary") or "")[:120]
+
+        icon = {"Strong Apply": "🟢", "Apply with Caution": "🟡", "Need Research": "🔵", "Skip": "⚪"}.get(verdict, "⚪")
+        msg = (
+            f"{icon} #{job_id} {verdict} R:{score}\n"
+            f"{title} @ {company}\n"
+            f"{location} | {salary}\n"
+            f"{summary}"
+        )
+        subprocess.run(
+            ["hermes", "send", "--to", "telegram", msg],
+            capture_output=True,
+            timeout=15,
+        )
+    except Exception:
+        pass  # notifications are best-effort
 
 
 def _upsert_assessment(con, job_id: int, data: dict) -> None:

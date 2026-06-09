@@ -23,26 +23,26 @@ target_id: <wellfound_tab_id>
 expression: (() => { const d = document.querySelector('[role="dialog"]'); if(!d) return 'no dialog'; const labels = [...d.querySelectorAll('label')].map(l => l.textContent.trim()).filter(Boolean); const inputs = [...d.querySelectorAll('input, textarea, select')].map(el => ({ tag: el.tagName, type: el.type || el.tagName, name: el.name, placeholder: el.placeholder, id: el.id, required: el.required })); return JSON.stringify({labels, inputs}); })()
 ```
 
-## Fill React-controlled text field
+## Fill React-controlled text fields (universal)
 
-For INPUT elements:
+⚠️ **PITFALL:** `window.HTMLInputElement.prototype` can be undefined in sandboxed frames or certain SPAs (WellFound's dialog). Use `el.constructor.prototype` instead — it infers the prototype from the element itself and works everywhere.
+
+Universal setter that handles both INPUT and TEXTAREA:
 ```javascript
 function setValue(el, val) {
-  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  const nativeSetter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
   nativeSetter.call(el, val);
   el.dispatchEvent(new Event('input', {bubbles:true}));
   el.dispatchEvent(new Event('change', {bubbles:true}));
 }
 ```
 
-For TEXTAREA elements:
+One-liner per-field:
 ```javascript
-function setValue(el, val) {
-  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  nativeSetter.call(el, val);
-  el.dispatchEvent(new Event('input', {bubbles:true}));
-  el.dispatchEvent(new Event('change', {bubbles:true}));
-}
+const ns = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
+ns.call(el, 'your text');
+el.dispatchEvent(new Event('input', {bubbles:true}));
+el.dispatchEvent(new Event('change', {bubbles:true}));
 ```
 
 ## Fill all form fields in one CDP call
@@ -53,13 +53,13 @@ Template (adapt field names and values):
   const d = document.querySelector('[role="dialog"]');
 
   function setInput(el, val) {
-    const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    const ns = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
     ns.call(el, val);
     el.dispatchEvent(new Event('input', {bubbles:true}));
     el.dispatchEvent(new Event('change', {bubbles:true}));
   }
   function setTextarea(el, val) {
-    const ns = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    const ns = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
     ns.call(el, val);
     el.dispatchEvent(new Event('input', {bubbles:true}));
     el.dispatchEvent(new Event('change', {bubbles:true}));

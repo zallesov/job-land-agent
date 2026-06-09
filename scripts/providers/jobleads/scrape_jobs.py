@@ -10,8 +10,7 @@ from scripts.pipeline.types import ShallowJob
 from scripts.providers._shared.job_filter import is_relevant
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-
-JOBLEADS_BASE = "https://www.jobleads.com/search/jobs"
+JOBLEADS_BASE = "https://www.jobleads.com/es/jobs"
 
 
 def _parse_args(*args, titles=None, db_path=None, _config=None):
@@ -50,8 +49,60 @@ def _is_unauthenticated(page) -> bool:
         return False
 
 
-def collect_jobleads(page, search: dict) -> list[dict]:
-    page.goto(search["url"], wait_until="domcontentloaded", timeout=45000)
+def _country_already_selected(page, country: str) -> bool:
+    try:
+        active = page.evaluate(
+            """() => {
+            const el = document.querySelector('a.country-selector-list__btn_active');
+            return el ? (el.textContent || '').trim() : '';
+            }"""
+        )
+        return isinstance(active, str) and active.strip().lower() == country.strip().lower()
+    except Exception:
+        return False
+
+
+def _ensure_country(page, country: str) -> None:
+    if not country or _country_already_selected(page, country):
+        return
+
+    page.locator('[data-testid="ui-select-search-country-dropdown-trigger"]').first.click()
+    page.wait_for_timeout(300)
+    page.locator('[data-testid="ui-select-search-country-dropdown-input"]').first.fill(country)
+    page.wait_for_timeout(300)
+    page.evaluate(
+        """(country) => {
+        const link = [...document.querySelectorAll('a.country-selector-list__btn')]
+            .find(a => ((a.textContent || '').trim().toLowerCase() === country.toLowerCase()));
+        if (!link) throw new Error(`country not found: ${country}`);
+        link.click();
+        }""",
+        country,
+    )
+    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_timeout(1000)
+
+
+def _ensure_remote(page) -> None:
+    current = page.locator('[data-testid="new-sidebar-filter-select-job-location-type-ui-input"]').first.input_value().strip()
+    if current.lower() == "remote":
+        return
+
+    page.locator('[data-testid="new-sidebar-filter-select-job-location-type-ui-input"]').first.click()
+    page.wait_for_timeout(200)
+    page.evaluate(
+        """() => {
+        const option = [...document.querySelectorAll('div,span,button,a,label')]
+            .find(el => el.offsetParent !== null && ((el.textContent || '').trim() === 'Remote'));
+        if (!option) throw new Error('Remote option not found');
+        option.click();
+        }"""
+    )
+    page.wait_for_timeout(300)
+
+
+def _run_search(page, search: dict) -> None:
+    page.goto(JOBLEADS_BASE, wait_until="domcontentloaded", timeout=45000)
     page.wait_for_timeout(1500)
 
     if _is_auth_page(page.url):
@@ -61,6 +112,28 @@ def collect_jobleads(page, search: dict) -> list[dict]:
     if _is_unauthenticated(page):
         print("\n⚠️  AUTH REQUIRED: JobLeads session not authenticated.", flush=True)
         raise SystemExit(10)
+
+    _ensure_country(page, search["country"])
+
+    keyword = page.locator('[data-testid="search-form-keyword-ui-input"]').first
+    keyword.click()
+    keyword.fill(search["query"])
+
+    location = page.locator('[data-testid="search-form-location-input"]').first
+    location.click()
+    location.fill(search["city"])
+    page.wait_for_timeout(500)
+
+    if search.get("remote_only"):
+        _ensure_remote(page)
+
+    page.locator('button[type="submit"]').first.click()
+    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_timeout(2000)
+
+
+def collect_jobleads(page, search: dict) -> list[dict]:
+    _run_search(page, search)
 
     try:
         page.wait_for_selector('a[href*="/job/"]', timeout=20000)
@@ -74,13 +147,34 @@ def collect_jobleads(page, search: dict) -> list[dict]:
 
     cards: list[dict] = page.evaluate(
         """(search) => {
+        function hasMarker(text) {
+            const t = (text || '').toLowerCase();
+            return [
+                'remote', 'hybrid', 'on-site', 'on site', 'vor ort', 'a distancia',
+                'full time', 'part time', 'vollzeit', 'teilzeit',
+                'days ago', 'day ago', 'today', 'heute', 'hace ', 'vor '
+            ].some(marker => t.includes(marker));
+        }
+        function looksLikeSalary(line) {
+            return ['EUR', 'USD', '€', '$'].some(token => (line || '').includes(token));
+        }
+        function looksLikePosted(line) {
+            const t = (line || '').toLowerCase();
+            return (
+                t.includes('hace ') || t.includes(' day ago') || t.includes(' days ago') ||
+                t.includes(' week ago') || t.includes(' weeks ago') ||
+                t.includes(' month ago') || t.includes(' months ago') ||
+                t.startsWith('vor ') || t === 'heute' || t === 'today'
+            );
+        }
         function cardFor(anchor) {
             let node = anchor.parentElement;
             let best = anchor.parentElement;
             while (node && node !== document.body) {
                 const text = (node.innerText || '').trim();
-                if (text.includes('Jornada completa') && text.includes('Hace ') && text.length < 1400)
+                if (text.length > 40 && text.length < 2000 && hasMarker(text)) {
                     best = node;
+                }
                 node = node.parentElement;
             }
             return best;
@@ -97,16 +191,27 @@ def collect_jobleads(page, search: dict) -> list[dict]:
                 const firstIdx = lines.findIndex(l => l === title);
                 let rest = firstIdx >= 0 ? lines.slice(firstIdx + 1) : lines.slice(1);
                 if (rest[0] === title) rest = rest.slice(1);
-                const salaryIdx = rest.findIndex(l => /EUR|€/.test(l));
-                const postedRelative = rest.find(l => /^(Hace\\s+\\d+|(\\d+)\\s+(day|days|Tag|Tage|week|weeks|month|months)\\s+(ago)?|vor\\s+\\d+)/i.test(l)) || '';
-                const remoteIdx = rest.findIndex(l => /A distancia|Remote/i.test(l));
+                const salaryIdx = rest.findIndex(looksLikeSalary);
+                const postedRelative = rest.find(looksLikePosted) || '';
+                const remoteIdx = rest.findIndex(l => hasMarker(l) && ['remote', 'hybrid', 'on-site', 'on site', 'vor ort', 'a distancia'].some(m => (l || '').toLowerCase().includes(m)));
                 const company = rest[0] || '';
                 let location = '';
                 if (remoteIdx > 0) location = rest[remoteIdx - 1];
                 else if (salaryIdx > 1) location = rest[salaryIdx - 1];
                 const salaryRaw = salaryIdx >= 0 ? rest[salaryIdx] : '';
-                return { provider: 'jobleads', company, title, url, description: '', applyUrl: '',
-                         location, country: search.country, postedRelative, salaryRaw, searchLabel: search.label };
+                return {
+                    provider: 'jobleads',
+                    company,
+                    title,
+                    url,
+                    description: '',
+                    applyUrl: '',
+                    location,
+                    country: search.country,
+                    postedRelative,
+                    salaryRaw,
+                    searchLabel: search.label,
+                };
             })
             .filter(Boolean);
         }""",
@@ -136,25 +241,23 @@ def scrape_jobs(
         page = ctx.new_page()
         page.bring_to_front()
         try:
+            title_queries = titles or cfg.get("search_terms") or [""]
+            remote_only = (cfg.get("work_style", {}) or {}).get("preferred") == "remote"
             for location in locations:
-                country_code = location["country_code"]
                 country = location["country"]
                 city = location["city"]
-                url_params = (
-                    f"location_country={country_code}"
-                    f"&filter_by_contractType=full_time"
-                    f"&filter_by_remote=remote"
-                )
-                search = {
-                    "label": f"{city} Remote",
-                    "query": "",
-                    "country": country,
-                    "url": f"{JOBLEADS_BASE}?view=for-you&{url_params}",
-                }
-                for r in collect_jobleads(page, search):
-                    if r.get("url") and r["url"] not in seen_urls:
-                        seen_urls.add(r["url"])
-                        all_raw.append(r)
+                for title in title_queries:
+                    search = {
+                        "label": f"{title or 'Any title'} | {city}",
+                        "query": title,
+                        "city": city,
+                        "country": country,
+                        "remote_only": remote_only,
+                    }
+                    for r in collect_jobleads(page, search):
+                        if r.get("url") and r["url"] not in seen_urls:
+                            seen_urls.add(r["url"])
+                            all_raw.append(r)
         finally:
             page.close()
 
@@ -176,7 +279,4 @@ def scrape_jobs(
             status=status,
         )
         jobs.append(j)
-
-    if titles:
-        jobs = [j for j in jobs if any(t.lower() in j.title.lower() for t in titles)]
     return jobs

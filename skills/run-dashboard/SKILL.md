@@ -11,7 +11,7 @@ description: Start the job search dashboard and open it in the browser. Triggere
 curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://localhost:3000 2>&1
 ```
 
-If output is `200`, `302`, or `304`: server is healthy, skip to Step 4.
+If output is `200`, `302`, or `304`: server is healthy, skip to Step 5 (CDP check).
 If output is `000` or anything else: server is down or hung, proceed to Step 2.
 
 ## Step 2: Clean up stale dashboard processes
@@ -22,7 +22,17 @@ pkill -f 'next dev' 2>/dev/null || true
 sleep 1
 ```
 
-## Step 3: Start the dev server
+## Step 3: Ensure dependencies installed
+
+If `node_modules` is missing, install before starting:
+
+```bash
+test -d node_modules || pnpm install
+```
+
+If the install fails, report the error and stop.
+
+## Step 4: Start the dev server
 
 Run from the current Hermes profile root, not from a developer checkout:
 
@@ -44,11 +54,22 @@ done
 
 If not ready after 30s: show the dev server output and report the error.
 
-## Step 4: Open in browser
+## Step 5: Check CDP connectivity before opening browser
 
-Open `http://localhost:3000` in the visible Chrome CDP session. Never use the non-CDP navigation tool in this agent.
+The dashboard tab must open via CDP in the attached Chrome session. First verify CDP is reachable:
 
-```python
+```bash
+curl -s http://localhost:9222/json/version | grep -q "{" && echo "OK" || echo "NOT_RUNNING"
+```
+
+- **OK**: proceed to Step 6.
+- **NOT_RUNNING**: stop here and tell the user to run `/browser connect` first, then retry this step.
+
+## Step 6: Open in browser
+
+Open `http://localhost:3000` via CDP:
+
+```
 browser_cdp(method="Target.createTarget", params={"url": "http://localhost:3000"})
 ```
 

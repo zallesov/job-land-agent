@@ -121,10 +121,12 @@ Steps:
 **⚠ PITFALL: Stale refs when mixing browser backends.** If you use non-CDP browser tools, then switch to `browser_cdp` for clicking, ref IDs can belong to a different browser session and resolve to "Unknown ref" errors. Use ONLY `browser_cdp(method="Runtime.evaluate", ...)` for filling. Do not use `browser_type`, `browser_click`, or `browser_snapshot` for form filling — they route through the wrong session. Use CDP DOM extraction or screenshots only to verify after filling.
 
 React-controlled inputs ignore `.value = "..."`. Use the native setter:
+
+⚠ **PITFALL: `window.HTMLInputElement.prototype` can be undefined in sandboxed frames or SPAs (WellFound's dialog).** Use `el.constructor.prototype` instead — it infers the prototype from the element itself:
+
 ```javascript
 function setValue(el, val) {
-  const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement;
-  const nativeSetter = Object.getOwnPropertyDescriptor(window[proto].prototype, 'value').set;
+  const nativeSetter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
   nativeSetter.call(el, val);
   el.dispatchEvent(new Event('input', {bubbles:true}));
   el.dispatchEvent(new Event('change', {bubbles:true}));
@@ -133,8 +135,8 @@ function setValue(el, val) {
 For radio/checkbox: regular `.click()` works.
 
 Read the form structure. Identify all fields:
-- Text inputs: name, email, phone, location, LinkedIn, website, GitHub, salary, years of experience
-- Textareas: cover letter, work experience, **screening/essay questions** (WellFound uses these instead of cover letters)
+- Text inputs (`<input>`): name, email, phone, location, LinkedIn, website, GitHub, salary, years of experience, **screening short-answer questions** (WellFound uses `<input type="text">` for these — **128-char limit**)
+- Textareas (`<textarea>`): cover letter, work experience, **screening/essay questions** (long-form, no char limit)
 - Dropdowns / selects: work authorization, relocation, pronouns, how did you hear
 - File inputs: resume/CV upload
 - Checkboxes: GDPR/consent, diversity, newsletter
@@ -188,11 +190,16 @@ If no video/voice requirement: proceed directly to Phase 4.
 
 1. Extract all question labels from the form (via CDP as shown in Phase 2)
 2. Draft one answer per question, mapping CV experience to the job description
-3. **Tone for this user:** Short, conversational, humanized. Include 1-2 deliberate minor spelling mistakes per answer (e.g., "themselfs", "werent", "paied"). No corporate-speak. Read like a real person wrote them quickly. Avoid process/committee language — this user hates it.
-4. Present all answers together in chat. The user will iterate on them (rephrase, shorten, change stories). Apply edits immediately via CDP.
-5. Once user approves: use the React setter pattern (Phase 2) via `browser_cdp` to populate all textareas
-6. Fill simple fields (LinkedIn, GitHub, radios, dropdowns) in the same pass
-7. Do NOT click Submit
+3. **Tone for this user:** Short, conversational, humanized, correct. No corporate-speak. Avoid process/committee language.
+4. **Check field type and char limits:** Inspect `inputs[i].tag` from the form structure extraction. If the field is an `<INPUT type="text">` (not TEXTAREA), it has a 128-char limit — keep the answer tight. TEXTAREA fields are unbounded. Mention the limit to the user when presenting answers.
+5. **Answer style by question type:**
+   - If the prompt asks to "list", "name", or "which [things] do you have experience with": give a concise list (comma-separated or short bullet-style). Don't write narrative paragraphs.
+   - If the prompt asks to "describe", "tell me about", or "explain": one short paragraph is fine.
+   - If the prompt is vague or abiguous, flag it to the user — don't over-answer.
+6. Present all answers in chat. The user will iterate (rephrase, shorten, change stories). Apply edits immediately via CDP.
+7. Once user approves: use the React setter pattern (Phase 2) via `browser_cdp` to populate all fields
+8. Fill simple fields (LinkedIn, GitHub, radios, dropdowns) in the same pass
+9. Do NOT click Submit
 
 ### For cover letter forms
 
@@ -255,16 +262,15 @@ Use `browser_cdp` with `Runtime.evaluate` on the correct `target_id` (from `Targ
 d.querySelector('#form-input--...').click()
 ```
 
-**React-controlled text fields:** Use the native setter pattern:
+**React-controlled text fields:** Use `el.constructor.prototype` — the only reliable setter across all SPAs:
+
 ```javascript
 function setValue(el, val) {
-  const proto = el.tagName === 'TEXTAREA' ? 'HTMLTextAreaElement' : 'HTMLInputElement';
-  const nativeSetter = Object.getOwnPropertyDescriptor(window[proto].prototype, 'value').set;
+  const nativeSetter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
   nativeSetter.call(el, val);
   el.dispatchEvent(new Event('input', {bubbles:true}));
   el.dispatchEvent(new Event('change', {bubbles:true}));
 }
-setValue(el, 'your text here');
 ```
 
 **Fill order:**
@@ -391,7 +397,13 @@ con.close()
 print(f"Set user_status=applied for job {<job_id>}")
 ```
 
-2. Report in chat: "Job #<N> marked as applied."
+2. Offer to save screening Q&A to memory for future reuse (especially for WellFound — the same questions often repeat across companies):
+
+> "Want me to save the screening questions and answers to memory for reuse?"
+
+If yes: `memory(action='add', target='memory', content='Job #N (<company>, <role>) WellFound screening answers:\n- Q1: <question label> → <answer>\n- Q2: ...')`
+
+3. Report in chat: "Job #<N> marked as applied."
 
 ---
 

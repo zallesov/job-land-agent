@@ -14,7 +14,7 @@ python3 scripts/batch_screen_jobs.py --job-ids 42,43,44
 python3 scripts/batch_screen_jobs.py --job-ids 42 43 44 --workers 5
 ```
 
-**If `batch_screen_jobs.py` is missing** (it can get deleted during project cleanup), call the module directly:
+If `batch_screen_jobs.py` is missing** (it can get deleted during project cleanup), call the module directly:
 
 ```bash
 python3 -c "
@@ -29,6 +29,17 @@ print(f'{len(ok_ids)} ok, {len(failures)} failed')
 
 Runs up to 5 parallel DeepSeek API calls directly — no Hermes agent overhead. Prefer this over calling `screen-job` in a loop.
 
+**Telegram notifications:** After each successful screening (`status='screened'`), `screen_job.py` calls `_notify_screened()` to send a Telegram message with format:
+```
+{icon} #{job_id} {verdict} R:{score}
+{title} @ {company}
+{location} | {salary}
+{one_line_summary}
+```
+Icons: 🟢 Strong Apply, 🟡 Apply with Caution, 🔵 Need Research, ⚪ Skip. Fires for ALL success paths (DeepSeek API, local heuristic, hermes_call). Best-effort — failures silently caught. Does NOT block screening.
+
+**env file loading:** `screen_job.py` auto-loads `.env` from PROJECT_ROOT at module import time (lines 18-24). DEEPSEEK_API_KEY can live in `~/.hermes/profiles/<name>/.env` — no need to `export` it manually.
+
 ## Single job via Hermes
 
 `Use skill screen-job. job_id: 42. cv_path: /path/to/cv.md`
@@ -40,6 +51,10 @@ Runs up to 5 parallel DeepSeek API calls directly — no Hermes agent overhead. 
 ```bash
 export DEEPSEEK_API_KEY="<your DeepSeek API key>"
 ```
+
+**⚠️ .env file location matters.** The script (`screen_job.py`) looks for `.env` first in `PROJECT_ROOT` (the `scripts/` parent directory), then falls back to `$HERMES_HOME/.env`. The `.env` must exist at one of these locations — not `~/.env`, not the current working directory.
+
+If `DEEPSEEK_API_KEY` is not loaded, the script silently falls through to `_local_assessment()` — a dumb keyword heuristic that produces garbage verdicts. No error is raised. The assessment will show `Heuristic fallback` in the detail fields (seniority_fit, tech_stack_fit, etc.) and typically returns "Skip" for any job whose description mentions a domain keyword (healthcare, marketing, finance, security).
 
 **2. The job must have a description.** Screening reads the `description` field from the DB. If `description` is NULL or too short (<50 chars), the verdict will be `"Need Research"` — essentially a waste of a call.
 
@@ -62,6 +77,27 @@ The DeepSeek API returned a response that the batch script couldn't parse as val
 ### All jobs fail with "DEEPSEEK_API_KEY not set"
 
 The key was not exported to the environment. See Prerequisites §1 for the export command.
+
+## False "screening failed" notification from `assessment_status`
+
+When writing an assessment row directly to `job_assessments` (bypassing the batch script), **you MUST set `assessment_status`** to a non-`pending` value — use `'completed'` or `'screened'`. The notification system polls for `assessment_status='pending'` and fires an alert if it stays that way.
+
+The batch screening scripts handle this internally, but direct inserts or Hermes agent writes often miss it. Common symptom: the user gets a Telegram "screening failed" notification even though the assessment data (verdict, score) is correct in the DB.
+
+**Fix (after-the-fact):**
+```sql
+UPDATE job_assessments SET assessment_status='completed', updated_at=datetime('now') WHERE job_id=<N>;
+UPDATE jobs SET pipeline_status='screened', updated_at=datetime('now') WHERE id=<N>;
+```
+
+**Self-check in code:**
+```python
+# When inserting an assessment row, always include assessment_status
+con.execute('''
+    INSERT INTO job_assessments (job_id, assessment_status, apply_verdict, relevance_score, ...)
+    VALUES (?, 'completed', ?, ?, ...)
+''', (...))
+```
 
 ## Task
 
