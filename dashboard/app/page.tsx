@@ -20,7 +20,7 @@ export default async function DashboardPage({
   const initialJobId = params.job ? parseInt(params.job, 10) || null : null;
 
   return (
-    <div className="flex h-screen" style={{ background: "var(--bg)", color: "var(--text-1)" }}>
+    <div className="flex" style={{ height: "calc(100vh - 2.5rem)", background: "var(--bg)", color: "var(--text-1)" }}>
       <JobListClient jobs={jobs} addJobAction={addManualJobAction} initialJobId={initialJobId} />
     </div>
   );

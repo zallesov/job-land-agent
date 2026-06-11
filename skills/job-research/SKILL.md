@@ -507,3 +507,77 @@ con.commit()
 con.close()
 "
 ```
+
+---
+
+## Step 4: Batch Company Prospecting (from external lists)
+
+**Trigger:** User provides a list of company names (from Telegram posts like @zarubezhom_jobs, a message, forum, or spreadsheet column). Do NOT just report the names — proactively find domains, career pages, and matching roles.
+
+This is a *prospecting* workflow — different from the single-job deep research in Steps 1-3 above. No DB job ID is involved until you want to add a promising role to the pipeline.
+
+### 4.1 Domain Discovery
+
+For each company name, find the correct domain. **Verify by visiting before reporting:**
+
+- Try `companyname.com` first — most likely correct
+- If DNS error / parked page / SSL error / wrong company → Google search
+- Handle special TLDs: `.app`, `.pro`, `.org`, `.games`
+- Check LinkedIn company page for the website link
+- Flag as "domain not found" after exhausting reasonable options
+
+**Common pitfalls:**
+- **Domain squatters**: `insense.com` is for sale → actual company at `insense.pro`
+- **Wrong TLD**: `prequel.com` is a squatter → app at `prequel.app`
+- **SSL issues**: `kodland.com` has SSL errors → real site at `kodland.org`
+- **Rebrands**: "Fjor Health" renamed to "Formula" — neither domain resolves
+- **Cyrillic/Latin mixups**: `Сonsuno` (Cyrillic С) → `Cosuno`
+- **Dead domains**: `ewa.com`, `getewa.com`, `ewa-app.com` all dead or for sale
+- **Generic names**: `theopenplatform.com` is parked on GoDaddy
+
+See `references/domain-discrepancies.md` for a complete table of verified corrections from Telegram posts.
+
+### 4.2 Career Page Discovery
+
+Once on the company website, find the career/jobs page:
+- Common paths: `/careers`, `/jobs`, `/company`, `/about`, `/en/careers`, `/web/en/company#careers`
+- Check footer and navigation for "Careers" / "Jobs" / "Join us" links
+- Some sites use embedded ATS iframes (Ashby, Greenhouse, Lever) — these appear as iframes in the browser snapshot
+- If JS-heavy and snapshot truncated, use `browser_console` to extract `document.body.textContent`
+
+**No careers page ≠ no hiring.** Some companies (AIBY, Readymag, Insense, Kodland) have "We are hiring" in their footer but no public job listings. They may hire via LinkedIn or direct referrals.
+
+### 4.3 Role Scanning
+
+For each company with a live career page, scan open engineering roles:
+
+**Filter for:**
+- Senior/Staff/Principal level (not junior, intern, entry-level)
+- Tech stack: Python, TypeScript, AI/ML, fullstack, backend, infrastructure
+- Remote: EU remote, Berlin, or Spain
+- Salary: €100k+ (or senior-market comp if not listed)
+- AI-native companies (actually build with AI, not just list it)
+
+**Role type priority:**
+1. AI/ML Engineer, AI Engineer, ML Engineer — highest priority
+2. Principal/Senior Full Stack (TypeScript/Python) — strong match
+3. Staff/Principal Backend Engineer — good match
+4. Platform/Security/Infrastructure Engineer — possible
+
+### 4.4 Reporting
+
+Present findings as a table: Company name | Role title | Salary | Remote | Verdict. Call out the best matches (top 2-3), companies with career pages but no visible SWE roles, and companies where domain wasn't found.
+
+### 4.5 Pipeline Integration
+
+If the user asks to add a role to the database:
+1. Open the job posting URL in the browser
+2. Run `python3 scripts/add_job_by_url.py --url <url>`
+3. Report the screening result
+
+### Pitfalls for Batch Prospecting
+
+- **Trust no domain from a Telegram post** — Posts frequently use the company's brand name as the supposed domain, not its actual domain. Always verify by visiting.
+- **Bot detection on research sources** — Glassdoor, Crunchbase, and DuckDuckGo all block non-profile browsers. Use Google News RSS for risk scanning. LinkedIn company pages are the most reliable for headcount/industry.
+- **Subagent scope for large lists** — When dispatching subagents for 15+ companies, limit each subagent to 1 company. Do NOT batch 5+ companies per subagent — they'll time out on slow/unresponsive sites.
+- **Prefer direct ATS API calls** — Greenhouse `boards-api.greenhouse.io/v1/boards/{board}/jobs`, Ashby `jobs.ashbyhq.com/api/non-user-list?ashby_job_board_domain={board}`, Lever `api.lever.co/v0/postings/{board}`

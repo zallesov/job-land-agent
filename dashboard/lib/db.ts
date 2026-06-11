@@ -155,9 +155,59 @@ function ensureSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_jobs_research_status ON jobs(research_status);
     CREATE INDEX IF NOT EXISTS idx_companies_domain ON companies(domain);
     CREATE INDEX IF NOT EXISTS idx_companies_normalized_name ON companies(normalized_name);
+    CREATE TABLE IF NOT EXISTS interviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT,
+      job_title TEXT,
+      status TEXT DEFAULT 'applied',
+      interview_status TEXT,
+      next_interview_date TEXT,
+      description TEXT,
+      contacts TEXT,
+      contact_via TEXT,
+      telegram_handle TEXT,
+      job_url TEXT,
+      comments TEXT,
+      emails_json TEXT,
+      job_id INTEGER REFERENCES jobs(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
     CREATE INDEX IF NOT EXISTS idx_agent_commands_status ON agent_commands(status);
     CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at);
   `);
+
+  // Migrate interviews table — add columns added after initial deploy
+  const interviewCols = (db.prepare("PRAGMA table_info(interviews)").all() as { name: string }[]).map(r => r.name);
+  const addIfMissing = (col: string, def: string) => {
+    if (!interviewCols.includes(col)) db.exec(`ALTER TABLE interviews ADD COLUMN ${col} ${def}`);
+  };
+  addIfMissing("contacts",         "TEXT");
+  addIfMissing("contact_via",      "TEXT");
+  addIfMissing("telegram_handle", "TEXT");
+  addIfMissing("job_url",          "TEXT");
+  addIfMissing("comments",         "TEXT");
+  addIfMissing("emails_json",      "TEXT");
+  addIfMissing("job_id",               "INTEGER REFERENCES jobs(id)");
+  addIfMissing("interview_dates_json", "TEXT");
+  addIfMissing("contacts_json",        "TEXT");
+  // Migrate legacy contacts text → contacts_json (one-time)
+  db.prepare(`
+    UPDATE interviews
+    SET contacts_json = json_array(json_object('name', contacts))
+    WHERE contacts IS NOT NULL AND contacts != ''
+      AND (contacts_json IS NULL OR contacts_json = '[]' OR contacts_json = 'null')
+  `).run();
+  // Migrate existing next_interview_date → interview_dates_json (one-time, per row)
+  db.prepare(`
+    UPDATE interviews
+    SET interview_dates_json = json_array(json_object('date', next_interview_date))
+    WHERE next_interview_date IS NOT NULL
+      AND (interview_dates_json IS NULL OR interview_dates_json = '[]')
+  `).run();
+  // company_name / job_title / status already exist — leave as-is
 }
 
 export function getDb(): Database.Database {
@@ -394,4 +444,79 @@ export function createScreenCommand(jobId: number): { commandId: number; existin
     "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('screen_job', ?, 'pending', 'ui')"
   ).run(JSON.stringify({ job_id: jobId }));
   return { commandId: result.lastInsertRowid as number, existing: false };
+}
+
+export type Contact = Record<string, string | undefined>;
+
+export type EmailMessage = {
+  from?: string;
+  date?: string;
+  subject?: string;
+  body: string;
+};
+
+export type InterviewDate = {
+  date: string;   // "YYYY-MM-DDTHH:MM" or "YYYY-MM-DD"
+  label?: string; // e.g. "Technical round", "HR call"
+  url?: string;   // Google Calendar event URL for the invite
+};
+
+export type Interview = {
+  id: number;
+  company_name: string | null;
+  job_title: string | null;
+  status: string | null;
+  interview_status: string | null;
+  next_interview_date: string | null; // legacy — kept in DB, not shown in UI
+  interview_dates_json: string | null; // JSON array of InterviewDate
+  description: string | null;
+  contacts: string | null;
+  contact_via: string | null;
+  telegram_handle: string | null;
+  job_url: string | null;
+  comments: string | null;
+  contacts_json: string | null;
+  emails_json: string | null;
+  job_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export function listInterviews(): Interview[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT * FROM interviews
+    ORDER BY
+      CASE status
+        WHEN 'offer'      THEN 0
+        WHEN 'in_process' THEN 1
+        WHEN 'applied'    THEN 2
+        WHEN 'rejected'   THEN 9
+        ELSE 5
+      END,
+      next_interview_date ASC NULLS LAST,
+      created_at DESC
+  `).all() as Interview[];
+}
+
+export function createInterview(): Interview {
+  const db = getDb();
+  const result = db.prepare(
+    "INSERT INTO interviews (status) VALUES ('applied')"
+  ).run();
+  return db.prepare("SELECT * FROM interviews WHERE id = ?").get(result.lastInsertRowid) as Interview;
+}
+
+export function updateInterview(id: number, data: Partial<Omit<Interview, "id" | "created_at" | "updated_at">>): Interview | null {
+  const db = getDb();
+  const fields = Object.keys(data) as (keyof typeof data)[];
+  if (!fields.length) return db.prepare("SELECT * FROM interviews WHERE id = ?").get(id) as Interview | null;
+  const sets = fields.map(f => `${f} = ?`).join(", ");
+  const vals = fields.map(f => data[f] ?? null);
+  db.prepare(`UPDATE interviews SET ${sets}, updated_at = datetime('now') WHERE id = ?`).run(...vals, id);
+  return db.prepare("SELECT * FROM interviews WHERE id = ?").get(id) as Interview | null;
+}
+
+export function deleteInterview(id: number): void {
+  getDb().prepare("DELETE FROM interviews WHERE id = ?").run(id);
 }

@@ -168,6 +168,7 @@ Or use the Python module directly in a single inline invocation (one-liner via `
   - fill city/location
   - set Remote in the work-model dropdown when the user's work_style prefers remote
   - submit the form and scrape the resulting list page
+- **JobLeads hot-match emails are a shortcut:** if the email body includes a direct job detail URL (`/job/<id>`) plus title/company/salary, use that URL for ingestion and keep the email body as evidence. This is especially useful when the listing page is a generic search/results surface rather than the canonical job detail page.
 - **Country dropdown pitfall:** if the desired country is already selected (for example Germany), skip the country-selection step entirely. Trying to re-select the already-active country can fail because the active country link is not meaningfully clickable in Playwright.
 - **Use config search_terms, not an empty query.** For JobLeads, loop over `config/user.yaml` `search_terms` and run one in-page search per term; deduplicate results by URL across searches.
 - **Selector/interaction pitfall:** the country chooser is not a normal editable select. The reliable pattern is to open the dropdown, type into the dropdown's own search input, then click the matching country entry from the rendered list. For some UI states, native Playwright `.click()` on the visible text can fail; a page-context `element.click()` on the matching country link is the fallback.
@@ -205,30 +206,91 @@ Or use the Python module directly in a single inline invocation (one-liner via `
 - User must create saved filters on hirify.me first.
 - Iterates every saved filter, paginates through all results.
 
-### csvfeed (file-based)
+### csvfeed — Importing Jobs from Spreadsheets (file-based)
+
 A local provider that reads jobs from a pre-filtered CSV file instead of scraping a real source.
 
 **When to use:** User provides a spreadsheet/curated job list and wants it ingested into the pipeline without CDP scraping. Common trigger: Google Sheets export of a job board's Development/Engineering tab.
 
-**Setup:**
-1. Export Google Sheet to CSV: `curl -sL "https://docs.google.com/spreadsheets/d/<ID>/export?format=csv&gid=<GID>"`
-2. Filter against user profile (seniority, location, role type, salary) into a second CSV
-3. Create `scripts/providers/csvfeed/check_auth.py` — always returns True (no-op)
-4. Create `scripts/providers/csvfeed/scrape_jobs.py` — reads filtered CSV, returns `list[ShallowJob]`
-5. Register in `scraping_pipeline.py` by adding `"csvfeed"` to the `PROVIDERS` set
+#### Full workflow (from Sheet to screened)
 
-**Enrichment bypass:** csvfeed jobs already have descriptions from the CSV, but enrichment will fail if Chrome is down (it tries CDP). After ingest, use `db_write_job_fields.py` per job to write the CSV description to the DB, then reset status from `enrich_failed` to `new`:
+##### 1. Export sheet to CSV
 
 ```bash
-python3 scripts/db_write_job_fields.py --db jobs.db --job-id <ID> < tmp/fields.json
-python3 -c "from scripts.db import get_connection; con=get_connection('jobs.db'); con.execute(\"UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE id=<ID>\"); con.commit(); con.close()"
+curl -sL "https://docs.google.com/spreadsheets/d/<ID>/export?format=csv&gid=<TAB_ID>" \
+  -A "Mozilla/5.0 ..." -o tmp/sheet.csv
 ```
 
-Then run batch screening via `pipeline.screen_jobs_batch`.
+- `gid` is the tab ID from the URL (`#gid=12345`).
+- If blocked, retry with a more complete Chrome UA header.
+- Check the CSV has the right columns and row count before proceeding.
 
-**CRITICAL: after ingesting via pipeline, always run post-ingest enrichment separately** — the pipeline tries CDP enrichment per job (slow, 1-at-a-time) and will fail if Chrome is not running. See `references/csvfeed-provider-pattern.md`.
+##### 2. Apply profile filter
 
-**Key constraint:** `ShallowJob` has no `description` field. Descriptions must be written post-ingest via `db_write_job_fields.py`. Do NOT write raw SQL to update descriptions — use the helper script.
+Analyze the CSV structure (columns, job families, countries, titles). Write a filter script in `tmp/` that drops jobs against the user's profile:
+
+**Hard exclusions:**
+- Junior/intern/entry/graduate titles
+- Non-SWE roles: QA, Sales Engineer, Field Service, Medical Coder, Lift/Elevator, Magento/Salesforce/WordPress dev, etc.
+- US-only / India-only / LATAM-only / Asia-only locations (EU remote or fully remote only)
+- Salary clearly below threshold
+- Mobile-only subcategories
+- Microsoft/Oracle stacks (Azure, .NET, SQL Server) — user preference
+
+**Seniority requirement:** Title must contain Senior/Staff/Principal/Lead/Architect/Director/Manager (or Experience Level column marks it as such).
+
+Run the filter — output a `filtered_dev.csv` in `tmp/`. See `references/csv-filter-patterns.md` for reusable regex patterns (emoji-stripping, seniority detection, non-SWE title exclusion, salary parsing).
+
+##### 3. Create csvfeed provider
+
+After filtering, the csvfeed provider should already exist in `scripts/providers/csvfeed/`. If not:
+- `check_auth.py`: no-op, always returns `True`
+- `scrape_jobs.py`: reads the filtered CSV, returns `list[ShallowJob]` — one per row
+
+Key: populate `ShallowJob` with url, title, company, location, country (emoji-stripped), salary_raw, dedup_key.
+
+##### 4. Ingest via pipeline
+
+```bash
+python3 scripts/scraping_pipeline.py --provider csvfeed
+```
+
+**Enrichment will fail** if Chrome isn't running (CDP connect fails). The job IDs are assigned; descriptions are NOT set by the provider (`ShallowJob` has no description field).
+
+##### 5. Post-ingest: write descriptions from CSV
+
+Do NOT write a custom script. Use `db_write_job_fields.py`:
+
+```bash
+# For each csvfeed job (by URL match), pipe JSON fields to db_write_job_fields.py
+echo '{"title":"...","description":"...","location":"...","salary_range":"...","date_posted":"..."}' | \
+  python3 scripts/db_write_job_fields.py --db jobs.db --job-id <ID>
+```
+
+Then reset status from `enrich_failed` to `new`:
+
+```bash
+python3 -c "from scripts.db import get_connection; con=get_connection('jobs.db'); con.execute(\"UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE provider='csvfeed' AND status='enrich_failed'\"); con.commit(); con.close()"
+```
+
+##### 6. Batch screening
+
+Use the existing batch screening module (NOT a custom script):
+
+```python
+from pipeline.screen_jobs_batch import screen_jobs_batch
+ok_ids, failures = screen_jobs_batch(job_ids, max_workers=5)
+```
+
+Each job gets a Telegram notification on completion.
+
+#### Pitfalls
+
+- **csvfeed in PROVIDERS persists** — after use, remove `"csvfeed"` from `PROVIDERS` in `scraping_pipeline.py` to avoid confusing future pipeline runs.
+- **Description must be set post-ingest** — `ShallowJob` has no `description` field, and `ingest.py` doesn't write it. Without descriptions, screening produces "Need Research" verdicts.
+- **Dedup uses company+title key** — `dedup_key = "{company}::{title}"`. If the same job appears in the spreadsheet AND was already scraped by a real provider, it will be deduped.
+- **Screening uses DeepSeek API** — `DEEPSEEK_API_KEY` must be in the environment or `scripts/.env`. If not set, falls back to `_local_assessment()` — keyword heuristic that produces garbage verdicts.
+- **Telegram notifications per job** — Each screened job sends a Telegram notification. For large batches (100+), this can be noisy. Best-effort, failures are silently swallowed.
 
 ---
 
@@ -284,3 +346,77 @@ See `references/db-maintenance.md` for deletion and maintenance workflows.
 | `researched` | full research done |
 | `applied` | application submitted |
 | `apply_failed` | application attempt failed |
+
+---
+
+## Post-Pipeline: Interview Tracking
+
+**Trigger:** User asks to log, update, or review interview records. This is a post-pipeline phase — after jobs are applied to, interviews are scheduled and tracked.
+
+- Interview records may store multiple meetings in `interview_dates_json`; each entry can carry the calendar event URL (`url`) alongside the timestamp.
+
+### Core rule
+
+Treat interview records as **evidence-backed process logs**, not calendar dumps.
+
+- **Gmail** is the primary source for recruiter messages, outcomes, and exact contact data.
+- **Calendar** is the primary source for timing and invite structure.
+- **Job DB** is the primary source for `job_id` and linked job metadata.
+- **LinkedIn, Telegram, YCombinator** are valid outreach channels only when the source is explicit.
+
+### Fields to fill
+
+| Field | Source | Notes |
+|---|---|---|
+| `company_name` | Recruiter email or invite sender domain | Prefer the strongest evidence |
+| `job_id` | DB match | Only when unambiguous |
+| `job_title` | DB if linked; otherwise interview/invite title | |
+| `status` | Process state | See lifecycle below |
+| `interview_status` | Process state | Reflect the interview stage |
+| `next_interview_date` | Calendar invite | |
+| `contact_via` | Outreach channel, NOT meeting platform | `email`, `LinkedIn`, `telegram`, `Ycombinator` |
+| `contacts` | External people only | Never add the user's own email |
+| `description` | Short summary of interview/invite text | |
+| `comments` | Evidence trail + short reasoning | |
+| `emails_json` | Matched Gmail messages | Include body text when useful |
+
+### Status lifecycle
+
+```
+contacted → scheduled → completed → awaiting feedback → (rejected | offer)
+                                                                  ↓
+                                                              withdrawn, no show
+```
+
+Rules:
+- Use `awaiting feedback` only when the latest evidence indicates the company is still reviewing the candidate.
+- If a recruiter says the candidate is not the best fit → `rejected`.
+- If only outreach with no booked meeting → `contacted`.
+- See `references/interview-records.md` for detailed field semantics and source priority.
+
+### Gmail search workflow (in order)
+
+1. Exact company name
+2. Recruiter/contact person name
+3. Contact email
+4. Exact interview title
+5. Company domain or brand token
+
+Use the first thread that contains explicit invite, update, or outcome text.
+
+### Update workflow
+
+1. Search Gmail for the strongest matching thread.
+2. Read message body and sender details.
+3. Update interview fields with best evidence.
+4. Store matched Gmail metadata/body in `emails_json`.
+5. Update `job_id` only when DB match is unambiguous.
+6. Keep the record terse and factual.
+
+### Pitfalls
+
+- Do not confuse Zoom/Meet/Teams with the outreach channel.
+- Do not use the calendar event alone as proof of outcome.
+- Do not add the user's own email to contact lists.
+- If a scheduling platform sent the invite, inspect the recruiter email thread behind it before setting company or status.
+- Do not over-normalize company names if the email thread already gives the correct one.

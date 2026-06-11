@@ -24,6 +24,9 @@ Gmail, Calendar, Drive, Contacts, Sheets, and Docs — through Hermes-managed OA
 ## References
 
 - `references/gmail-search-syntax.md` — Gmail search operators (is:unread, from:, newer_than:, etc.)
+- `references/email-triage-workflow.md` — How to resolve interview state from Gmail threads vs calendar invites
+- `references/auth-flow-quirks.md` — local auth flow notes for the installed setup script in this profile
+- `references/auth-quirks.md` — profile-specific OAuth/setup quirks and the exact auth flow used here.
 - `references/auth-compatibility-notes.md` — local setup.py flag compatibility and the observed auth flow in this profile.
 
 ## Scripts
@@ -65,16 +68,14 @@ Calendar/Drive/Sheets/Docs?"**
   Passwords) and takes 2 minutes to set up. No Google Cloud project needed.
   Load the himalaya skill and follow its setup instructions.
 
-- **Email + Calendar** → Continue with this skill. If your installed `setup.py` supports scope selection, use `--services email,calendar`; otherwise proceed with the default auth flow and accept the scopes shown on the consent screen.
+- **Email + Calendar / Calendar / Drive / Sheets / Docs** → Continue with this
+  skill. In the installed setup tool used in this profile, auth currently
+  requests the full Workspace scope bundle rather than a service subset.
+  See `references/auth-flow-quirks.md` for the exact local flow.
 
-- **Calendar/Drive/Sheets/Docs only** → Continue with this skill and use a
-  narrower `--services` set like `calendar,drive,sheets,docs`.
+- **Full Workspace access** → Continue with this skill; this is the default
+  behavior of the installed setup tool in this profile.
 
-- **Full Workspace access** → Continue with this skill and use the default
-  `all` service set.
-
-**Question 2: "Does your Google account use Advanced Protection (hardware
-security keys required to sign in)? If you're not sure, you probably don't
 — it's something you would have explicitly enrolled in."**
 
 - **No / Not sure** → Normal setup. Continue below.
@@ -118,33 +119,32 @@ explicit (for example `~/Downloads/hermes-google-client-secret.json`), then run
 
 ### Step 3: Get authorization URL
 
-Current compatibility note: some installed versions of `scripts/setup.py` do not accept the documented `--services` or `--format` flags. If that happens, use the plain auth flow below and grant the scopes shown on the consent screen.
+In the installed tool used in this profile, auth is not service-scoped via
+`--services`; it requests the full Workspace scope bundle.
 
 ```bash
 $GSETUP --auth-url
 ```
 
-This prints the authorization URL directly. In some environments it may also auto-install dependencies on first run.
+This prints the authorization URL directly to stdout. Older docs referenced a
+JSON payload with `auth_url`; that is not what this build emits.
 
 Agent rules for this step:
-- Send the exact authorization URL to the user as a single line.
+- Send the exact URL to the user as a single line.
 - Tell the user that the browser will likely fail on `http://localhost:1` after approval, and that this is expected.
 - Tell them to copy the ENTIRE redirected URL from the browser address bar.
 - If the user gets `Error 403: access_denied`, send them directly to `https://console.cloud.google.com/auth/audience` to add themselves as a test user.
 
-### Step 4: Exchange the code
-
-The user will paste back either a URL like `http://localhost:1/?code=4/0A...&scope=...`
 or just the code string. Either works. The `--auth-url` step stores a temporary
 pending OAuth session locally so `--auth-code` can complete the PKCE exchange
 later, even on headless systems:
 
 ```bash
-$GSETUP --auth-code "THE_URL_OR_CODE_THE_USER_PASTED" --format json
+$GSETUP --auth-code "THE_URL_OR_CODE_THE_USER_PASTED"
 ```
 
 If `--auth-code` fails because the code expired, was already used, or came from
-an older browser tab, it now returns a fresh `fresh_auth_url`. In that case,
+an older browser tab, it returns a fresh `fresh_auth_url`. In that case,
 immediately send the new URL to the user and have them retry with the newest
 browser redirect only.
 
@@ -292,7 +292,7 @@ All commands return JSON. Parse with `jq` or read directly. Key fields:
 - **Gmail search**: `[{id, threadId, from, to, subject, date, snippet, labels}]`
 - **Gmail get**: `{id, threadId, from, to, subject, date, labels, body}`
 - **Gmail send/reply**: `{status: "sent", id, threadId}`
-- **Calendar list**: `[{id, summary, start, end, location, description, htmlLink}]`
+- **Calendar list**: `[{id, summary, start, end, location, description, htmlLink}]` — `htmlLink` is the calendar event URL to store when you want the invite link.
 - **Calendar create**: `{status: "created", id, summary, htmlLink}`
 - **Drive search**: `[{id, name, mimeType, modifiedTime, webViewLink}]`
 - **Drive get**: `{id, name, mimeType, modifiedTime, size, webViewLink, parents, owners}`
@@ -326,6 +326,12 @@ All commands return JSON. Parse with `jq` or read directly. Key fields:
 | `HttpError 403: Access Not Configured` | API not enabled — user needs to enable it in Google Cloud Console |
 | `ModuleNotFoundError` | Run `$GSETUP --install-deps` |
 | Advanced Protection blocks auth | Workspace admin must allowlist the OAuth client ID |
+
+## Practical Notes From Use
+
+- The currently installed `setup.py` in this profile accepts `--check`, `--client-secret`, `--auth-url`, `--auth-code`, `--revoke`, and `--install-deps`. It does not accept the documented `--services` / `--format` flags here.
+- For interview workflows, use Gmail threads as the source of truth for process state. Calendar invites only show scheduling; the latest substantive recruiter email can override a stale calendar-derived status.
+- When enriching interview/contact records, do not add the candidate's own email address to contact-person lists.
 
 ## Revoking Access
 
