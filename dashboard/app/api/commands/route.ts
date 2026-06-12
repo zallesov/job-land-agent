@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createResearchCommand, createScreenCommand, getDb } from "@/lib/db";
+import { createResearchCommand, createScreenCommand, getJobDetail, markCommandFailed } from "@/lib/db";
 import { spawn } from "child_process";
 import { openSync } from "fs";
 import path from "path";
@@ -7,16 +7,22 @@ import path from "path";
 const ALLOWED_COMMANDS = new Set(["research_job", "screen_job"]);
 const HERMES = process.env.HERMES_BIN || "hermes";
 
-const COMMAND_CONFIG: Record<string, { skill: string; logDir: string; promptFn: (jobId: number, commandId: number, dbPath: string) => string }> = {
+const COMMAND_CONFIG: Record<string, {
+  skill: string;
+  logDir: string;
+  promptFn: (jobId: string, commandId: string, dbPath: string) => string;
+}> = {
   research_job: {
     skill: "job-research",
     logDir: "research-logs",
-    promptFn: (jobId, commandId, dbPath) => `Research job_id=${jobId} command_id=${commandId} db=${dbPath}`,
+    promptFn: (jobId, commandId, dbPath) =>
+      `Research job_id=${parseInt(jobId) || jobId} command_id=${commandId} db=${dbPath}`,
   },
   screen_job: {
     skill: "screen-job",
     logDir: "screen-logs",
-    promptFn: (jobId, commandId, dbPath) => `Screen job_id=${jobId} command_id=${commandId} db=${dbPath}`,
+    promptFn: (jobId, commandId, dbPath) =>
+      `Screen job_id=${parseInt(jobId) || jobId} command_id=${commandId} db=${dbPath}`,
   },
 };
 
@@ -29,15 +35,15 @@ export async function POST(req: NextRequest) {
   const { command_type, job_id } = body;
   if (!ALLOWED_COMMANDS.has(command_type))
     return NextResponse.json({ error: "Command not allowed" }, { status: 400 });
-  if (!Number.isInteger(job_id))
+  if (!job_id || typeof job_id !== "string")
     return NextResponse.json({ error: "Invalid job_id" }, { status: 400 });
 
-  const db = getDb();
-  const job = db.prepare("SELECT id FROM jobs WHERE id = ?").get(job_id);
-  if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  const jobData = await getJobDetail(job_id);
+  if (!jobData) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
   const createCmd = command_type === "screen_job" ? createScreenCommand : createResearchCommand;
-  const { commandId, existing } = createCmd(job_id);
+  const { commandId, existing } = await createCmd(job_id);
+
   if (!existing) {
     const cfg = COMMAND_CONFIG[command_type];
     const dbPath = path.resolve(process.cwd(), "../jobs.db");
@@ -54,23 +60,19 @@ export async function POST(req: NextRequest) {
       { detached: true, stdio: ["ignore", logFd, logFd], cwd: projectRoot }
     );
 
-    const markFailed = (msg: string) => {
+    child.on("error", async (err) => {
       try {
-        getDb().prepare(
-          "UPDATE agent_commands SET status='failed', error=?, finished_at=datetime('now') WHERE id=?"
-        ).run(msg, commandId);
-      } catch { /* db may be gone on hot reload */ }
-    };
-
-    child.on("error", (err) => {
-      markFailed(`Failed to start Hermes: ${err.message}. Start the Hermes gateway: hermes -p joblandagent`);
+        await markCommandFailed(commandId, `Failed to start Hermes: ${err.message}. Start the Hermes gateway: hermes -p joblandagent`);
+      } catch { /* ignore */ }
     });
 
-    child.on("close", (code) => {
+    child.on("close", async (code) => {
       if (code !== 0) {
-        markFailed(
-          `Hermes exited immediately (code ${code ?? "signal"}) — Hermes gateway may not be running. Start it: hermes -p joblandagent`
-        );
+        try {
+          await markCommandFailed(commandId,
+            `Hermes exited immediately (code ${code ?? "signal"}) — Hermes gateway may not be running. Start it: hermes -p joblandagent`
+          );
+        } catch { /* ignore */ }
       }
     });
 

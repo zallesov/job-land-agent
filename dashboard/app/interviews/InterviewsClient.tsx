@@ -1,7 +1,9 @@
 "use client";
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
+import PocketBase from "pocketbase";
 import type { Interview, EmailMessage, InterviewDate, Contact } from "@/lib/db";
+import { PB_URL } from "@/lib/pb";
 
 // ── date formatting ────────────────────────────────────────────────────────────
 
@@ -606,7 +608,7 @@ function EmailThread({ raw, onSave }: { raw: string | null; onSave: (json: strin
 
 // ── expanded row panel ─────────────────────────────────────────────────────────
 
-function ExpandedRow({ row, colSpan, onUpdate }: { row: Interview; colSpan: number; onUpdate: (id: number, field: string, value: string | null) => void }) {
+function ExpandedRow({ row, colSpan, onUpdate }: { row: Interview; colSpan: number; onUpdate: (id: string, field: string, value: string | null) => void }) {
   function save(field: string) {
     return (v: string) => onUpdate(row.id, field, v || null);
   }
@@ -630,7 +632,7 @@ function ExpandedRow({ row, colSpan, onUpdate }: { row: Interview; colSpan: numb
               <EditableTextarea value={row.comments ?? ""} onSave={save("comments")} placeholder="Add comments…" rows={2} />
             </Section>
             <Section label="Job ID (reference)">
-              <EditableCell value={row.job_id?.toString() ?? ""} onSave={v => onUpdate(row.id, "job_id", v ? v : null)} placeholder="optional job id" mono />
+              <EditableCell value={row.job_id ?? ""} onSave={v => onUpdate(row.id, "job_id", v ? v : null)} placeholder="optional job id" mono />
             </Section>
           </div>
           {/* Right col */}
@@ -702,13 +704,23 @@ function SelectBadgeCell({ value, options, colorMap, onSave }: {
 
 export function InterviewsClient({ interviews: initial }: { interviews: Interview[] }) {
   const [rows, setRows] = useState<Interview[]>(initial);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [saving, setSaving] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<string>("");
+
+  useEffect(() => {
+    const pb = new PocketBase(PB_URL);
+    pb.collection('interviews').subscribe('*', (e) => {
+      if (e.action === 'create') setRows(prev => [e.record as unknown as Interview, ...prev]);
+      else if (e.action === 'update') setRows(prev => prev.map(r => r.id === e.record.id ? { ...r, ...e.record } as unknown as Interview : r));
+      else if (e.action === 'delete') setRows(prev => prev.filter(r => r.id !== e.record.id));
+    }).catch(() => {});
+    return () => { pb.collection('interviews').unsubscribe('*').catch(() => {}); };
+  }, []);
 
   const filtered = filterStatus ? rows.filter(r => r.status === filterStatus) : rows;
 
-  const toggleExpand = useCallback((id: number) => {
+  const toggleExpand = useCallback((id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -716,7 +728,7 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
     });
   }, []);
 
-  const patchRow = useCallback(async (id: number, field: string, value: string | null) => {
+  const patchRow = useCallback(async (id: string, field: string, value: string | null) => {
     setSaving(prev => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/interviews/${id}`, {
@@ -738,7 +750,7 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
     setExpanded(prev => new Set(prev).add(created.id));
   }
 
-  async function handleDelete(id: number) {
+  async function handleDelete(id: string) {
     if (!confirm("Delete this interview entry?")) return;
     await fetch(`/api/interviews/${id}`, { method: "DELETE" });
     setRows(prev => prev.filter(r => r.id !== id));

@@ -16,8 +16,8 @@ export default async function DashboardPage({
     unresearched: params.unresearched === "1",
     new_only: params.new_only === "1",
   };
-  const jobs = listJobs(filters);
-  const initialJobId = params.job ? parseInt(params.job, 10) || null : null;
+  const jobs = await listJobs(filters);
+  const initialJobId = params.job ?? null;
 
   return (
     <div className="flex" style={{ height: "calc(100vh - 2.5rem)", background: "var(--bg)", color: "var(--text-1)" }}>

@@ -1,9 +1,11 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import PocketBase from "pocketbase";
 import { JobDetail } from "./JobDetail";
 import { updateJobAction } from "../actions";
 import { Logo } from "./Logo";
+import { PB_URL } from "@/lib/pb";
 
 export const PIPELINE_STATUS_COLORS: Record<string, string> = {
   new:            "bg-blue-900/60 text-blue-300",
@@ -57,12 +59,12 @@ const USER_STATUS_PRIORITY: Record<string, number> = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function sortJobs(jobs: any[], sortBy: "newest" | "score" | "status"): any[] {
   const arr = [...jobs];
-  if (sortBy === "newest") return arr.sort((a, b) => b.id - a.id);
+  if (sortBy === "newest") return arr.sort((a, b) => b.id.localeCompare(a.id));
   if (sortBy === "score") {
     return arr.sort((a, b) => {
       const as_ = (a.relevance_score ?? -1) + (a.trustworthiness_score ?? -1);
       const bs_ = (b.relevance_score ?? -1) + (b.trustworthiness_score ?? -1);
-      return as_ !== bs_ ? bs_ - as_ : b.id - a.id;
+      return as_ !== bs_ ? bs_ - as_ : b.id.localeCompare(a.id);
     });
   }
   return arr.sort((a, b) => {
@@ -76,32 +78,80 @@ function sortJobs(jobs: any[], sortBy: "newest" | "score" | "status"): any[] {
 }
 
 export function JobListClient({
-  jobs, addJobAction, initialJobId,
+  jobs: initialJobs, addJobAction, initialJobId,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   jobs: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addJobAction: (fd: FormData) => Promise<any>;
-  initialJobId?: number | null;
+  initialJobId?: string | null;
 }) {
-  const [selectedId, setSelectedId] = useState<number | null>(initialJobId ?? null);
-  const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [jobs, setJobs] = useState<any[]>(initialJobs);
+  const [selectedId, setSelectedId] = useState<string | null>(initialJobId ?? null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [addUrl, setAddUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "score" | "status">("score");
   const [verdictFilter, setVerdictFilter] = useState<string | null>(null);
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hasActive = jobs.some((j: any) => j.is_scraping);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pbRef = useRef<PocketBase | null>(null);
 
+  // Realtime subscriptions — replace the old polling
   useEffect(() => {
-    if (hasActive) pollRef.current = setInterval(() => router.refresh(), 5000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [hasActive, router]);
+    const pb = new PocketBase(PB_URL);
+    pbRef.current = pb;
 
-  function selectJob(id: number) {
+    pb.collection('jobs').subscribe('*', (e) => {
+      if (e.action === 'update') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setJobs(prev => prev.map((j: any) => j.id === e.record.id ? { ...j, ...e.record } : j));
+      } else if (e.action === 'create') {
+        setJobs(prev => [e.record, ...prev]);
+      } else if (e.action === 'delete') {
+        setJobs(prev => prev.filter((j: any) => j.id !== e.record.id)); // eslint-disable-line @typescript-eslint/no-explicit-any
+      }
+    }).catch(() => { /* realtime unavailable — silent */ });
+
+    pb.collection('job_assessments').subscribe('*', (e) => {
+      if (e.action === 'create' || e.action === 'update') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setJobs(prev => prev.map((j: any) => j.id === e.record['job_id']
+          ? { ...j, relevance_score: e.record['relevance_score'], apply_verdict: e.record['apply_verdict'] }
+          : j));
+      }
+    }).catch(() => { /* silent */ });
+
+    pb.collection('agent_commands').subscribe('*', (e) => {
+      if (e.action === 'update' || e.action === 'create') {
+        const payload = e.record['payload_json'];
+        const p = typeof payload === 'string' ? (() => { try { return JSON.parse(payload); } catch { return null; } })() : payload;
+        if (!p?.job_id) return;
+        const jid = String(p.job_id).padStart(15, '0');
+        const status = e.record['status'] as string;
+        const active = status === 'pending' || status === 'running';
+        const type = e.record['command_type'] as string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setJobs(prev => prev.map((j: any) => {
+          if (j.id !== jid) return j;
+          return {
+            ...j,
+            is_researching: type === 'research_job' ? (active ? 1 : 0) : j.is_researching,
+            is_scraping:    type === 'scrape_job'   ? (active ? 1 : 0) : j.is_scraping,
+          };
+        }));
+      }
+    }).catch(() => { /* silent */ });
+
+    return () => {
+      pb.collection('jobs').unsubscribe('*').catch(() => {});
+      pb.collection('job_assessments').unsubscribe('*').catch(() => {});
+      pb.collection('agent_commands').unsubscribe('*').catch(() => {});
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function selectJob(id: string) {
     setSelectedId(id);
     router.replace(`?job=${id}`, { scroll: false });
   }
@@ -307,7 +357,7 @@ export function JobListClient({
             key={selectedId}
             updateJobAction={updateJobAction}
             onDelete={() => {
-              setDeletedIds(prev => new Set(prev).add(selectedId));
+              setDeletedIds(prev => { const s = new Set(prev); s.add(selectedId); return s; });
               setSelectedId(null);
             }}
           />

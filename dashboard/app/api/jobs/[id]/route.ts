@@ -6,9 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const jobId = parseInt(id);
-  if (isNaN(jobId)) return NextResponse.json({ error: "Bad id" }, { status: 400 });
-  const data = getJobDetail(jobId);
+  const data = await getJobDetail(id);
   if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(data);
 }
@@ -18,8 +16,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const jobId = parseInt(id);
-  if (isNaN(jobId)) return NextResponse.json({ error: "Bad id" }, { status: 400 });
-  softDeleteJob(jobId);
+  await softDeleteJob(id);
   return NextResponse.json({ ok: true });
 }

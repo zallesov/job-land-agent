@@ -10,8 +10,8 @@ const HERMES = process.env.HERMES_BIN || "hermes";
 export async function addManualJobAction(formData: FormData) {
   const url = (formData.get("url") as string)?.trim();
   if (!url || !url.startsWith("http")) throw new Error("Invalid URL");
-  const { id: jobId } = addManualJob(url);
-  const { commandId } = createScrapeCommand(jobId, url);
+  const { id: jobId } = await addManualJob(url);
+  const { commandId } = await createScrapeCommand(jobId, url);
 
   const dbPath = path.resolve(process.cwd(), "../jobs.db");
   const logDir = path.resolve(process.cwd(), "../outputs/research-logs");
@@ -31,9 +31,9 @@ export async function addManualJobAction(formData: FormData) {
 }
 
 export async function updateJobAction(
-  jobId: number,
+  jobId: string,
   fields: { user_status?: string; comment?: string }
 ) {
-  updateJobWorkflowFields(jobId, fields);
+  await updateJobWorkflowFields(jobId, fields);
   revalidatePath("/");
 }

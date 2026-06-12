@@ -94,9 +94,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function JobDetail({ jobId, updateJobAction, onDelete }: {
-  jobId: number;
+  jobId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateJobAction: (id: number, fields: any) => Promise<void>;
+  updateJobAction: (id: string, fields: any) => Promise<void>;
   onDelete?: () => void;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

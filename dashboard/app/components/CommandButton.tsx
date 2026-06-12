@@ -18,7 +18,7 @@ const STATUS_ICON: Record<string, string> = {
 };
 
 export function CommandButton({ jobId, commands, onDone, compact = false }: {
-  jobId: number;
+  jobId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   commands: any[];
   onDone?: () => void;

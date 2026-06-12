@@ -1,227 +1,28 @@
-// Server-only SQLite access. Never import this in client components.
-import Database from "better-sqlite3";
-import path from "path";
+// Data access layer — PocketBase backend.
+import { getServerPb } from './pb';
 
-const DB_PATH = path.resolve(process.cwd(), "../jobs.db");
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const g = global as typeof global & { _db?: Database.Database };
-
-function ensureSchema(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS companies (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      display_name TEXT NOT NULL,
-      normalized_name TEXT NOT NULL,
-      website_url TEXT,
-      domain TEXT,
-      linkedin_url TEXT,
-      glassdoor_url TEXT,
-      crunchbase_url TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      url TEXT NOT NULL UNIQUE,
-      provider TEXT NOT NULL,
-      provider_job_id TEXT,
-      company_id INTEGER REFERENCES companies(id),
-      posted_company_name TEXT,
-      actual_hiring_company_id INTEGER REFERENCES companies(id),
-      title TEXT,
-      description TEXT,
-      apply_url TEXT,
-      location TEXT,
-      country TEXT,
-      remote_scope TEXT,
-      date_posted TEXT,
-      first_seen TEXT NOT NULL DEFAULT (datetime('now')),
-      last_seen TEXT NOT NULL DEFAULT (datetime('now')),
-      status TEXT NOT NULL DEFAULT 'new',
-      pipeline_status TEXT NOT NULL DEFAULT 'new',
-      user_status TEXT,
-      research_status TEXT,
-      comment TEXT,
-      current_interview_status TEXT,
-      source_payload_json TEXT,
-      deleted_at TEXT,
-      salary_range TEXT,
-      dedup_key TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS company_research (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      company_id INTEGER NOT NULL REFERENCES companies(id),
-      researched_at TEXT,
-      research_status TEXT NOT NULL DEFAULT 'pending',
-      legitimacy_check TEXT,
-      hiring_entity_type TEXT,
-      founded_year INTEGER,
-      hq_location TEXT,
-      employee_count TEXT,
-      headcount_trend TEXT,
-      funding_summary TEXT,
-      funding_stage TEXT,
-      risk_news TEXT,
-      glassdoor_summary TEXT,
-      trustworthiness_score INTEGER,
-      research_notes TEXT,
-      source_urls_json TEXT,
-      raw_research_json TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS job_assessments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_id INTEGER NOT NULL UNIQUE REFERENCES jobs(id),
-      assessed_at TEXT,
-      assessment_status TEXT NOT NULL DEFAULT 'pending',
-      relevance_score INTEGER,
-      apply_verdict TEXT,
-      one_line_summary TEXT,
-      red_flag_scan TEXT,
-      seniority_fit TEXT,
-      tech_stack_fit TEXT,
-      ic_or_management TEXT,
-      salary_assessment TEXT,
-      remote_eligibility TEXT,
-      visa_contract_structure TEXT,
-      ai_native_assessment TEXT,
-      assessment_notes TEXT,
-      source_urls_json TEXT,
-      raw_assessment_json TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS applications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_id INTEGER NOT NULL REFERENCES jobs(id),
-      status TEXT NOT NULL DEFAULT 'draft_requested',
-      tailored_cv_path TEXT,
-      cover_letter_path TEXT,
-      application_notes_path TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      submitted_at TEXT,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      error TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS agent_commands (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      command_type TEXT NOT NULL,
-      payload_json TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_by TEXT NOT NULL DEFAULT 'system',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      started_at TEXT,
-      finished_at TEXT,
-      result_json TEXT,
-      error TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS pipeline_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_type TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'running',
-      started_at TEXT NOT NULL DEFAULT (datetime('now')),
-      finished_at TEXT,
-      summary_json TEXT,
-      error TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      entity_type TEXT NOT NULL,
-      entity_id INTEGER,
-      event_type TEXT NOT NULL,
-      actor TEXT NOT NULL DEFAULT 'system',
-      event_json TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup_key ON jobs(dedup_key);
-    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-    CREATE INDEX IF NOT EXISTS idx_jobs_provider ON jobs(provider);
-    CREATE INDEX IF NOT EXISTS idx_jobs_country ON jobs(country);
-    CREATE INDEX IF NOT EXISTS idx_jobs_company_id ON jobs(company_id);
-    CREATE INDEX IF NOT EXISTS idx_jobs_pipeline_status ON jobs(pipeline_status);
-    CREATE INDEX IF NOT EXISTS idx_jobs_user_status ON jobs(user_status);
-    CREATE INDEX IF NOT EXISTS idx_jobs_research_status ON jobs(research_status);
-    CREATE INDEX IF NOT EXISTS idx_companies_domain ON companies(domain);
-    CREATE INDEX IF NOT EXISTS idx_companies_normalized_name ON companies(normalized_name);
-    CREATE TABLE IF NOT EXISTS interviews (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      company_name TEXT,
-      job_title TEXT,
-      status TEXT DEFAULT 'applied',
-      interview_status TEXT,
-      next_interview_date TEXT,
-      description TEXT,
-      contacts TEXT,
-      contact_via TEXT,
-      telegram_handle TEXT,
-      job_url TEXT,
-      comments TEXT,
-      emails_json TEXT,
-      job_id INTEGER REFERENCES jobs(id),
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
-    CREATE INDEX IF NOT EXISTS idx_agent_commands_status ON agent_commands(status);
-    CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at);
-  `);
-
-  // Migrate interviews table — add columns added after initial deploy
-  const interviewCols = (db.prepare("PRAGMA table_info(interviews)").all() as { name: string }[]).map(r => r.name);
-  const addIfMissing = (col: string, def: string) => {
-    if (!interviewCols.includes(col)) db.exec(`ALTER TABLE interviews ADD COLUMN ${col} ${def}`);
-  };
-  addIfMissing("contacts",         "TEXT");
-  addIfMissing("contact_via",      "TEXT");
-  addIfMissing("telegram_handle", "TEXT");
-  addIfMissing("job_url",          "TEXT");
-  addIfMissing("comments",         "TEXT");
-  addIfMissing("emails_json",      "TEXT");
-  addIfMissing("job_id",               "INTEGER REFERENCES jobs(id)");
-  addIfMissing("interview_dates_json", "TEXT");
-  addIfMissing("contacts_json",        "TEXT");
-  // Migrate legacy contacts text → contacts_json (one-time)
-  db.prepare(`
-    UPDATE interviews
-    SET contacts_json = json_array(json_object('name', contacts))
-    WHERE contacts IS NOT NULL AND contacts != ''
-      AND (contacts_json IS NULL OR contacts_json = '[]' OR contacts_json = 'null')
-  `).run();
-  // Migrate existing next_interview_date → interview_dates_json (one-time, per row)
-  db.prepare(`
-    UPDATE interviews
-    SET interview_dates_json = json_array(json_object('date', next_interview_date))
-    WHERE next_interview_date IS NOT NULL
-      AND (interview_dates_json IS NULL OR interview_dates_json = '[]')
-  `).run();
-  // company_name / job_title / status already exist — leave as-is
+function esc(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-export function getDb(): Database.Database {
-  if (!g._db) {
-    g._db = new Database(DB_PATH, { readonly: false });
-    g._db.pragma("foreign_keys = ON");
-    g._db.pragma("journal_mode = WAL");
-    ensureSchema(g._db);
+function parseJson<T>(val: unknown): T | null {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val) as T; } catch { return null; }
   }
-  return g._db;
+  return val as T;
 }
+
+// ---------------------------------------------------------------------------
+// Types (id is string — PocketBase IDs)
+// ---------------------------------------------------------------------------
 
 export type Job = {
-  id: number;
+  id: string;
   url: string;
   provider: string;
   posted_company_name: string | null;
@@ -229,22 +30,22 @@ export type Job = {
   location: string | null;
   country: string | null;
   remote_scope: string | null;
-  status: string;               // legacy — still in DB, kept for compat
-  pipeline_status: string;      // new
-  user_status: string | null;   // new
-  research_status: string | null; // new
+  status: string;
+  pipeline_status: string;
+  user_status: string | null;
+  research_status: string | null;
   comment: string | null;
   first_seen: string;
   last_seen: string;
-  company_id: number | null;
+  company_id: string | null;
   apply_url: string | null;
   description: string | null;
   source_payload_json: string | null;
 };
 
 export type JobAssessment = {
-  id: number;
-  job_id: number;
+  id: string;
+  job_id: string;
   assessment_status: string;
   relevance_score: number | null;
   apply_verdict: string | null;
@@ -258,8 +59,8 @@ export type JobAssessment = {
 };
 
 export type CompanyResearch = {
-  id: number;
-  company_id: number;
+  id: string;
+  company_id: string;
   trustworthiness_score: number | null;
   research_status: string;
   legitimacy_check: string | null;
@@ -271,7 +72,7 @@ export type CompanyResearch = {
 };
 
 export type AgentCommand = {
-  id: number;
+  id: string;
   command_type: string;
   payload_json: string | null;
   status: string;
@@ -283,8 +84,8 @@ export type AgentCommand = {
 };
 
 export type JobFilters = {
-  status?: string;           // maps to pipeline_status
-  user_status?: string;      // new
+  status?: string;
+  user_status?: string;
   provider?: string;
   country?: string;
   remote_scope?: string;
@@ -292,159 +93,6 @@ export type JobFilters = {
   new_only?: boolean;
   apply_verdict?: string;
 };
-
-export function listJobs(filters: JobFilters = {}): (Job & {
-  relevance_score: number | null;
-  apply_verdict: string | null;
-  trustworthiness_score: number | null;
-  is_researching: number;
-  is_scraping: number;
-})[] {
-  const db = getDb();
-  const conditions: string[] = [
-    "j.deleted_at IS NULL",
-    "(ja.apply_verdict != 'Skip' OR ja.apply_verdict IS NULL)",
-  ];
-  const params: unknown[] = [];
-
-  if (filters.status) { conditions.push("j.pipeline_status = ?"); params.push(filters.status); }
-  if (filters.user_status) { conditions.push("j.user_status = ?"); params.push(filters.user_status); }
-  if (filters.provider) { conditions.push("j.provider = ?"); params.push(filters.provider); }
-  if (filters.country) { conditions.push("j.country = ?"); params.push(filters.country); }
-  if (filters.remote_scope) { conditions.push("j.remote_scope = ?"); params.push(filters.remote_scope); }
-  if (filters.unresearched) { conditions.push("ja.id IS NULL"); }
-  if (filters.new_only) { conditions.push("j.pipeline_status = 'new'"); }
-  if (filters.apply_verdict) { conditions.push("ja.apply_verdict = ?"); params.push(filters.apply_verdict); }
-
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const sql = `
-    SELECT j.*,
-           ja.relevance_score, ja.apply_verdict,
-           cr.trustworthiness_score,
-           CASE WHEN rc.job_id IS NOT NULL THEN 1 ELSE 0 END AS is_researching,
-           CASE WHEN sc.job_id IS NOT NULL THEN 1 ELSE 0 END AS is_scraping
-    FROM jobs j
-    LEFT JOIN job_assessments ja ON ja.job_id = j.id
-    LEFT JOIN company_research cr ON cr.company_id = j.company_id
-    LEFT JOIN (
-      SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
-      FROM agent_commands
-      WHERE command_type = 'research_job' AND status IN ('pending', 'running') AND json_valid(payload_json)
-        AND created_at >= datetime('now', '-30 minutes')
-    ) rc ON rc.job_id = j.id
-    LEFT JOIN (
-      SELECT DISTINCT CAST(json_extract(payload_json, '$.job_id') AS INTEGER) AS job_id
-      FROM agent_commands
-      WHERE command_type = 'scrape_job' AND status IN ('pending', 'running') AND json_valid(payload_json)
-        AND created_at >= datetime('now', '-30 minutes')
-    ) sc ON sc.job_id = j.id
-    ${where}
-    ORDER BY
-      CASE j.user_status
-        WHEN 'offer'        THEN 0
-        WHEN 'interviewing' THEN 1
-        WHEN 'applied'      THEN 2
-        WHEN 'interesting'  THEN 3
-        ELSE 10
-      END,
-      CASE j.pipeline_status WHEN 'new' THEN 0 ELSE 1 END,
-      COALESCE(ja.relevance_score, 0) DESC,
-      COALESCE(cr.trustworthiness_score, 0) DESC,
-      j.first_seen DESC
-    LIMIT 500
-  `;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return db.prepare(sql).all(...params) as any;
-}
-
-export function getJobDetail(id: number): {
-  job: Job;
-  assessment: JobAssessment | null;
-  research: CompanyResearch | null;
-  commands: AgentCommand[];
-} | null {
-  const db = getDb();
-  const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Job | undefined;
-  if (!job) return null;
-  const assessment = db.prepare("SELECT * FROM job_assessments WHERE job_id = ?").get(id) as JobAssessment | null;
-  const research = job.company_id
-    ? db.prepare("SELECT * FROM company_research WHERE company_id = ?").get(job.company_id) as CompanyResearch | null
-    : null;
-  const commands = db.prepare(
-    "SELECT * FROM agent_commands WHERE json_valid(payload_json) AND json_extract(payload_json, '$.job_id') = ? ORDER BY created_at DESC LIMIT 10"
-  ).all(id) as AgentCommand[];
-  return { job, assessment, research, commands };
-}
-
-export function addManualJob(url: string): { id: number; created: boolean } {
-  const db = getDb();
-  const existing = db.prepare("SELECT id FROM jobs WHERE url = ?").get(url) as { id: number } | undefined;
-  if (existing) return { id: existing.id, created: false };
-  const result = db.prepare(
-    "INSERT INTO jobs (url, provider, status) VALUES (?, 'manual', 'new')"
-  ).run(url);
-  const id = result.lastInsertRowid as number;
-  db.prepare(
-    "INSERT INTO events (entity_type, entity_id, event_type, actor) VALUES ('job', ?, 'job_inserted', 'ui')"
-  ).run(id);
-  return { id, created: true };
-}
-
-export function updateJobWorkflowFields(
-  id: number,
-  fields: { user_status?: string; comment?: string }
-): void {
-  const db = getDb();
-  const updates: string[] = [];
-  const params: unknown[] = [];
-  if (fields.user_status !== undefined) { updates.push("user_status = ?"); params.push(fields.user_status); }
-  if (fields.comment !== undefined) { updates.push("comment = ?"); params.push(fields.comment); }
-  if (!updates.length) return;
-  updates.push("updated_at = datetime('now')");
-  params.push(id);
-  db.prepare(`UPDATE jobs SET ${updates.join(", ")} WHERE id = ?`).run(...params);
-}
-
-export function softDeleteJob(id: number): void {
-  const db = getDb();
-  db.prepare("UPDATE jobs SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(id);
-}
-
-export function createScrapeCommand(jobId: number, url: string): { commandId: number; existing: boolean } {
-  const db = getDb();
-  const existing = db.prepare(
-    "SELECT id FROM agent_commands WHERE command_type = 'scrape_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
-  ).get(jobId) as { id: number } | undefined;
-  if (existing) return { commandId: existing.id, existing: true };
-  const result = db.prepare(
-    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('scrape_job', ?, 'pending', 'ui')"
-  ).run(JSON.stringify({ job_id: jobId, url }));
-  return { commandId: result.lastInsertRowid as number, existing: false };
-}
-
-export function createResearchCommand(jobId: number): { commandId: number; existing: boolean } {
-  const db = getDb();
-  const existing = db.prepare(
-    "SELECT id FROM agent_commands WHERE command_type = 'research_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ? AND created_at >= datetime('now', '-30 minutes')"
-  ).get(jobId) as { id: number } | undefined;
-  if (existing) return { commandId: existing.id, existing: true };
-  const result = db.prepare(
-    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('research_job', ?, 'pending', 'ui')"
-  ).run(JSON.stringify({ job_id: jobId }));
-  return { commandId: result.lastInsertRowid as number, existing: false };
-}
-
-export function createScreenCommand(jobId: number): { commandId: number; existing: boolean } {
-  const db = getDb();
-  const existing = db.prepare(
-    "SELECT id FROM agent_commands WHERE command_type = 'screen_job' AND status IN ('pending','running') AND json_extract(payload_json,'$.job_id') = ?"
-  ).get(jobId) as { id: number } | undefined;
-  if (existing) return { commandId: existing.id, existing: true };
-  const result = db.prepare(
-    "INSERT INTO agent_commands (command_type, payload_json, status, created_by) VALUES ('screen_job', ?, 'pending', 'ui')"
-  ).run(JSON.stringify({ job_id: jobId }));
-  return { commandId: result.lastInsertRowid as number, existing: false };
-}
 
 export type Contact = Record<string, string | undefined>;
 
@@ -456,19 +104,19 @@ export type EmailMessage = {
 };
 
 export type InterviewDate = {
-  date: string;   // "YYYY-MM-DDTHH:MM" or "YYYY-MM-DD"
-  label?: string; // e.g. "Technical round", "HR call"
-  url?: string;   // Google Calendar event URL for the invite
+  date: string;
+  label?: string;
+  url?: string;
 };
 
 export type Interview = {
-  id: number;
+  id: string;
   company_name: string | null;
   job_title: string | null;
   status: string | null;
   interview_status: string | null;
-  next_interview_date: string | null; // legacy — kept in DB, not shown in UI
-  interview_dates_json: string | null; // JSON array of InterviewDate
+  next_interview_date: string | null;
+  interview_dates_json: string | null;
   description: string | null;
   contacts: string | null;
   contact_via: string | null;
@@ -477,46 +125,304 @@ export type Interview = {
   comments: string | null;
   contacts_json: string | null;
   emails_json: string | null;
-  job_id: number | null;
+  job_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export function listInterviews(): Interview[] {
-  const db = getDb();
-  return db.prepare(`
-    SELECT * FROM interviews
-    ORDER BY
-      CASE status
-        WHEN 'offer'      THEN 0
-        WHEN 'in_process' THEN 1
-        WHEN 'applied'    THEN 2
-        WHEN 'rejected'   THEN 9
-        ELSE 5
-      END,
-      next_interview_date ASC NULLS LAST,
-      created_at DESC
-  `).all() as Interview[];
+// ---------------------------------------------------------------------------
+// listJobs
+// ---------------------------------------------------------------------------
+
+export async function listJobs(filters: JobFilters = {}): Promise<(Job & {
+  relevance_score: number | null;
+  apply_verdict: string | null;
+  trustworthiness_score: number | null;
+  is_researching: number;
+  is_scraping: number;
+})[]> {
+  const pb = getServerPb();
+
+  const conditions: string[] = ['deleted_at = null'];
+  if (filters.status)       conditions.push(`pipeline_status = "${esc(filters.status)}"`);
+  if (filters.user_status)  conditions.push(`user_status = "${esc(filters.user_status)}"`);
+  if (filters.provider)     conditions.push(`provider = "${esc(filters.provider)}"`);
+  if (filters.country)      conditions.push(`country = "${esc(filters.country)}"`);
+  if (filters.remote_scope) conditions.push(`remote_scope = "${esc(filters.remote_scope)}"`);
+  if (filters.new_only)     conditions.push('pipeline_status = "new"');
+
+  const thirtyAgo = new Date(Date.now() - 30 * 60 * 1000)
+    .toISOString().replace('T', ' ').slice(0, 19);
+
+  const [jobsResult, allAssessments, allResearch, activeCommands] = await Promise.all([
+    pb.collection('jobs').getList(1, 500, { filter: conditions.join(' && ') }),
+    pb.collection('job_assessments').getFullList({ batch: 500 }),
+    pb.collection('company_research').getFullList({ batch: 200 }),
+    pb.collection('agent_commands').getFullList({
+      batch: 200,
+      filter: `(status = "pending" || status = "running") && created_at >= "${thirtyAgo}"`,
+    }),
+  ]);
+
+  const assessmentMap = new Map(allAssessments.map(a => [a['job_id'] as string, a]));
+  const researchMap   = new Map(allResearch.map(r => [r['company_id'] as string, r]));
+
+  const researchingIds = new Set<string>();
+  const scrapingIds    = new Set<string>();
+  for (const cmd of activeCommands) {
+    const payload = parseJson<{ job_id?: string | number }>(cmd['payload_json']);
+    if (!payload?.job_id) continue;
+    const jid = String(payload.job_id).padStart(15, '0');
+    if (cmd['command_type'] === 'research_job') researchingIds.add(jid);
+    if (cmd['command_type'] === 'scrape_job')   scrapingIds.add(jid);
+  }
+
+  const results: ReturnType<typeof listJobs> extends Promise<infer R> ? R : never = [];
+
+  for (const j of jobsResult.items) {
+    const assessment = assessmentMap.get(j['id'] as string);
+
+    if (assessment?.['apply_verdict'] === 'Skip') continue;
+    if (filters.unresearched && assessment) continue;
+    if (filters.apply_verdict && assessment?.['apply_verdict'] !== filters.apply_verdict) continue;
+
+    const companyId = j['company_id'] as string | null;
+    const research  = companyId ? researchMap.get(companyId) ?? null : null;
+
+    results.push({
+      ...(j as unknown as Job),
+      relevance_score:       (assessment?.['relevance_score'] as number | null) ?? null,
+      apply_verdict:         (assessment?.['apply_verdict']   as string | null) ?? null,
+      trustworthiness_score: (research?.['trustworthiness_score'] as number | null) ?? null,
+      is_researching: researchingIds.has(j['id'] as string) ? 1 : 0,
+      is_scraping:    scrapingIds.has(j['id'] as string)    ? 1 : 0,
+    });
+  }
+
+  const usPriority: Record<string, number> = { offer: 0, interviewing: 1, applied: 2, interesting: 3 };
+  results.sort((a, b) => {
+    const du = (usPriority[a.user_status ?? ''] ?? 10) - (usPriority[b.user_status ?? ''] ?? 10);
+    if (du !== 0) return du;
+    const dp = (a.pipeline_status === 'new' ? 0 : 1) - (b.pipeline_status === 'new' ? 0 : 1);
+    if (dp !== 0) return dp;
+    const dr = (b.relevance_score ?? 0) - (a.relevance_score ?? 0);
+    if (dr !== 0) return dr;
+    const dt = (b.trustworthiness_score ?? 0) - (a.trustworthiness_score ?? 0);
+    if (dt !== 0) return dt;
+    return (b.first_seen ?? '').localeCompare(a.first_seen ?? '');
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return results as any;
 }
 
-export function createInterview(): Interview {
-  const db = getDb();
-  const result = db.prepare(
-    "INSERT INTO interviews (status) VALUES ('applied')"
-  ).run();
-  return db.prepare("SELECT * FROM interviews WHERE id = ?").get(result.lastInsertRowid) as Interview;
+// ---------------------------------------------------------------------------
+// getJobDetail
+// ---------------------------------------------------------------------------
+
+export async function getJobDetail(id: string): Promise<{
+  job: Job;
+  assessment: JobAssessment | null;
+  research: CompanyResearch | null;
+  commands: AgentCommand[];
+} | null> {
+  const pb = getServerPb();
+  try {
+    const job = await pb.collection('jobs').getOne(id);
+
+    const [assessmentsResult, commandsResult] = await Promise.all([
+      pb.collection('job_assessments').getList(1, 1, { filter: `job_id = "${esc(id)}"` }),
+      pb.collection('agent_commands').getList(1, 10, {
+        sort: '-created_at',
+        filter: `(command_type = "research_job" || command_type = "scrape_job" || command_type = "screen_job")`,
+      }),
+    ]);
+
+    // Filter commands by job_id in memory (handles both string and integer stored values)
+    const numId = parseInt(id);
+    const relatedCommands = commandsResult.items.filter(cmd => {
+      const p = parseJson<{ job_id?: string | number }>(cmd['payload_json']);
+      if (!p?.job_id) return false;
+      const pStr = String(p.job_id).padStart(15, '0');
+      return pStr === id || (Number.isFinite(numId) && Number(p.job_id) === numId);
+    });
+
+    const assessment = assessmentsResult.items[0] ?? null;
+    let research: CompanyResearch | null = null;
+    const companyId = job['company_id'] as string | null;
+    if (companyId) {
+      const resResult = await pb.collection('company_research').getList(1, 1, {
+        filter: `company_id = "${esc(companyId)}"`,
+      });
+      research = (resResult.items[0] ?? null) as unknown as CompanyResearch | null;
+    }
+
+    return {
+      job:        job as unknown as Job,
+      assessment: assessment as unknown as JobAssessment | null,
+      research,
+      commands:   relatedCommands as unknown as AgentCommand[],
+    };
+  } catch {
+    return null;
+  }
 }
 
-export function updateInterview(id: number, data: Partial<Omit<Interview, "id" | "created_at" | "updated_at">>): Interview | null {
-  const db = getDb();
-  const fields = Object.keys(data) as (keyof typeof data)[];
-  if (!fields.length) return db.prepare("SELECT * FROM interviews WHERE id = ?").get(id) as Interview | null;
-  const sets = fields.map(f => `${f} = ?`).join(", ");
-  const vals = fields.map(f => data[f] ?? null);
-  db.prepare(`UPDATE interviews SET ${sets}, updated_at = datetime('now') WHERE id = ?`).run(...vals, id);
-  return db.prepare("SELECT * FROM interviews WHERE id = ?").get(id) as Interview | null;
+// ---------------------------------------------------------------------------
+// addManualJob
+// ---------------------------------------------------------------------------
+
+export async function addManualJob(url: string): Promise<{ id: string; created: boolean }> {
+  const pb = getServerPb();
+  const existing = await pb.collection('jobs').getList(1, 1, { filter: `url = "${esc(url)}"` });
+  if (existing.items.length > 0) return { id: existing.items[0]['id'] as string, created: false };
+
+  const record = await pb.collection('jobs').create({
+    url,
+    provider: 'manual',
+    status: 'new',
+    pipeline_status: 'new',
+    first_seen: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    last_seen:  new Date().toISOString().replace('T', ' ').slice(0, 19),
+  });
+  await pb.collection('events').create({
+    entity_type: 'job',
+    entity_id:   record['id'],
+    event_type:  'job_inserted',
+    actor:       'ui',
+    created_at:  new Date().toISOString().replace('T', ' ').slice(0, 19),
+  });
+  return { id: record['id'] as string, created: true };
 }
 
-export function deleteInterview(id: number): void {
-  getDb().prepare("DELETE FROM interviews WHERE id = ?").run(id);
+// ---------------------------------------------------------------------------
+// updateJobWorkflowFields
+// ---------------------------------------------------------------------------
+
+export async function updateJobWorkflowFields(
+  id: string,
+  fields: { user_status?: string; comment?: string },
+): Promise<void> {
+  const pb = getServerPb();
+  const data: Record<string, string> = { updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19) };
+  if (fields.user_status !== undefined) data['user_status'] = fields.user_status;
+  if (fields.comment     !== undefined) data['comment']     = fields.comment;
+  await pb.collection('jobs').update(id, data);
+}
+
+// ---------------------------------------------------------------------------
+// softDeleteJob
+// ---------------------------------------------------------------------------
+
+export async function softDeleteJob(id: string): Promise<void> {
+  const pb = getServerPb();
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  await pb.collection('jobs').update(id, { deleted_at: now, updated_at: now });
+}
+
+// ---------------------------------------------------------------------------
+// Command helpers
+// ---------------------------------------------------------------------------
+
+async function findPendingCommand(commandType: string, jobId: string): Promise<string | null> {
+  const pb = getServerPb();
+  const numId = parseInt(jobId);
+  const filter = `command_type = "${commandType}" && (status = "pending" || status = "running")`;
+  const result = await pb.collection('agent_commands').getList(1, 50, { filter });
+  const match = result.items.find(cmd => {
+    const p = parseJson<{ job_id?: string | number }>(cmd['payload_json']);
+    if (!p?.job_id) return false;
+    const pStr = String(p.job_id).padStart(15, '0');
+    return pStr === jobId || (Number.isFinite(numId) && Number(p.job_id) === numId);
+  });
+  return match ? (match['id'] as string) : null;
+}
+
+async function createCommand(commandType: string, jobId: string, extra: Record<string, unknown> = {}): Promise<{ commandId: string; existing: boolean }> {
+  const pb = getServerPb();
+  const existingId = await findPendingCommand(commandType, jobId);
+  if (existingId) return { commandId: existingId, existing: true };
+
+  const numId = parseInt(jobId);
+  const record = await pb.collection('agent_commands').create({
+    command_type: commandType,
+    payload_json: JSON.stringify({ job_id: Number.isFinite(numId) ? numId : jobId, ...extra }),
+    status: 'pending',
+    created_by: 'ui',
+    created_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+  });
+  return { commandId: record['id'] as string, existing: false };
+}
+
+export async function createScrapeCommand(jobId: string, url: string): Promise<{ commandId: string; existing: boolean }> {
+  return createCommand('scrape_job', jobId, { url });
+}
+
+export async function createResearchCommand(jobId: string): Promise<{ commandId: string; existing: boolean }> {
+  return createCommand('research_job', jobId);
+}
+
+export async function createScreenCommand(jobId: string): Promise<{ commandId: string; existing: boolean }> {
+  return createCommand('screen_job', jobId);
+}
+
+export async function markCommandFailed(commandId: string, error: string): Promise<void> {
+  const pb = getServerPb();
+  await pb.collection('agent_commands').update(commandId, {
+    status: 'failed',
+    error,
+    finished_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+  });
+}
+
+export async function getCommand(commandId: string): Promise<AgentCommand | null> {
+  const pb = getServerPb();
+  try {
+    const r = await pb.collection('agent_commands').getOne(commandId);
+    return r as unknown as AgentCommand;
+  } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
+// Interviews
+// ---------------------------------------------------------------------------
+
+const INTERVIEW_SORT: Record<string, number> = { offer: 0, in_process: 1, applied: 2, rejected: 9 };
+
+export async function listInterviews(): Promise<Interview[]> {
+  const pb = getServerPb();
+  const items = await pb.collection('interviews').getFullList({ batch: 200 });
+  return (items as unknown as Interview[]).sort((a, b) => {
+    const ds = (INTERVIEW_SORT[a.status ?? ''] ?? 5) - (INTERVIEW_SORT[b.status ?? ''] ?? 5);
+    if (ds !== 0) return ds;
+    const nd = (a.next_interview_date ?? 'zzz').localeCompare(b.next_interview_date ?? 'zzz');
+    if (nd !== 0) return nd;
+    return (b.created_at ?? '').localeCompare(a.created_at ?? '');
+  });
+}
+
+export async function createInterview(): Promise<Interview> {
+  const pb = getServerPb();
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const r = await pb.collection('interviews').create({ status: 'applied', created_at: now, updated_at: now });
+  return r as unknown as Interview;
+}
+
+export async function updateInterview(
+  id: string,
+  data: Partial<Omit<Interview, 'id' | 'created_at' | 'updated_at'>>,
+): Promise<Interview | null> {
+  const pb = getServerPb();
+  try {
+    const r = await pb.collection('interviews').update(id, {
+      ...data,
+      updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    });
+    return r as unknown as Interview;
+  } catch { return null; }
+}
+
+export async function deleteInterview(id: string): Promise<void> {
+  const pb = getServerPb();
+  await pb.collection('interviews').delete(id);
 }
