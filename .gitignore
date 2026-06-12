@@ -139,3 +139,39 @@ docs/superpowers/
 # Chrome persistent profile (auto-created by start-chrome.sh)
 .chrome-profile
 node_modules
+
+# Hermes runtime state (root-level)
+auth.json
+auth.lock
+gateway_state.json
+processes.json
+channel_directory.json
+context_length_cache.yaml
+models_dev_cache.json
+ollama_cloud_models_cache.json
+provider_models_cache.json
+.hermes_history
+.update_check
+interrupt_debug.log
+bin/
+home/
+cron/
+
+# OAuth credentials (sensitive)
+google_client_secret.json
+google_token.json
+.env.backup*
+
+# One-off migration scripts
+migrate_contacts.py
+
+# Hermes internal runtime (root-level profile)
+hermes-profile/
+
+# Skills runtime state
+skills/.archive/
+skills/.bundled_manifest
+skills/.curator_backups/
+skills/.curator_state
+skills/.usage.json
+skills/.usage.json.lock
