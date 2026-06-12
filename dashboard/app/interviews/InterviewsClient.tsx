@@ -710,9 +710,20 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
 
   useEffect(() => {
     const pb = new PocketBase(PB_URL);
+    const JSON_FIELDS = ['interview_dates_json', 'contacts_json', 'emails_json'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function norm(rec: any): Interview {
+      const out = { ...rec };
+      for (const f of JSON_FIELDS) {
+        if (out[f] !== null && out[f] !== undefined && typeof out[f] !== 'string') {
+          out[f] = JSON.stringify(out[f]);
+        }
+      }
+      return out as Interview;
+    }
     pb.collection('interviews').subscribe('*', (e) => {
-      if (e.action === 'create') setRows(prev => [e.record as unknown as Interview, ...prev]);
-      else if (e.action === 'update') setRows(prev => prev.map(r => r.id === e.record.id ? { ...r, ...e.record } as unknown as Interview : r));
+      if (e.action === 'create') setRows(prev => [norm(e.record), ...prev]);
+      else if (e.action === 'update') setRows(prev => prev.map(r => r.id === e.record.id ? norm({ ...r, ...e.record }) : r));
       else if (e.action === 'delete') setRows(prev => prev.filter(r => r.id !== e.record.id));
     }).catch(() => {});
     return () => { pb.collection('interviews').unsubscribe('*').catch(() => {}); };
@@ -819,7 +830,7 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
                 >
                   {/* ID */}
                   <td className="px-3 py-2 w-10 shrink-0">
-                    <span className="font-data text-xs select-all" style={{ color: "var(--text-3)" }}>{row.id}</span>
+                    <span className="font-data text-xs select-all" style={{ color: "var(--text-3)" }}>{parseInt(row.id) || row.id}</span>
                   </td>
 
                   {/* Expand toggle */}

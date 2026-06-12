@@ -17,6 +17,24 @@ function parseJson<T>(val: unknown): T | null {
   return val as T;
 }
 
+// PocketBase returns json-typed fields as already-parsed objects.
+// Callers that expect JSON strings (InterviewsClient parseDates etc.) need strings back.
+function ensureJsonString(val: unknown): string | null {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'string') return val;
+  try { return JSON.stringify(val); } catch { return null; }
+}
+
+const INTERVIEW_JSON_FIELDS = ['interview_dates_json', 'contacts_json', 'emails_json'] as const;
+
+function normalizeInterview(r: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...r };
+  for (const f of INTERVIEW_JSON_FIELDS) {
+    out[f] = ensureJsonString(out[f]);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Types (id is string — PocketBase IDs)
 // ---------------------------------------------------------------------------
@@ -392,7 +410,7 @@ const INTERVIEW_SORT: Record<string, number> = { offer: 0, in_process: 1, applie
 export async function listInterviews(): Promise<Interview[]> {
   const pb = getServerPb();
   const items = await pb.collection('interviews').getFullList({ batch: 200 });
-  return (items as unknown as Interview[]).sort((a, b) => {
+  return (items.map(r => normalizeInterview(r as unknown as Record<string, unknown>)) as unknown as Interview[]).sort((a, b) => {
     const ds = (INTERVIEW_SORT[a.status ?? ''] ?? 5) - (INTERVIEW_SORT[b.status ?? ''] ?? 5);
     if (ds !== 0) return ds;
     const nd = (a.next_interview_date ?? 'zzz').localeCompare(b.next_interview_date ?? 'zzz');
@@ -405,7 +423,7 @@ export async function createInterview(): Promise<Interview> {
   const pb = getServerPb();
   const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
   const r = await pb.collection('interviews').create({ status: 'applied', created_at: now, updated_at: now });
-  return r as unknown as Interview;
+  return normalizeInterview(r as unknown as Record<string, unknown>) as unknown as Interview;
 }
 
 export async function updateInterview(
@@ -418,7 +436,7 @@ export async function updateInterview(
       ...data,
       updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
     });
-    return r as unknown as Interview;
+    return normalizeInterview(r as unknown as Record<string, unknown>) as unknown as Interview;
   } catch { return null; }
 }
 

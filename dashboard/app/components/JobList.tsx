@@ -285,7 +285,7 @@ export function JobListClient({
                 <div className="text-sm font-semibold truncate leading-tight mb-0.5"
                   style={{ color: "var(--text-1)" }}>
                   <span className="font-data font-bold mr-1.5" style={{ color: "var(--text-2)", fontSize: 12 }}>
-                    #{job.id}
+                    #{parseInt(job.id) || job.id}
                   </span>
                   {job.title ?? "(no title)"}
                 </div>
