@@ -1,6 +1,6 @@
 ---
 name: job-research
-description: Research a single job posting from SQLite DB. Does real web research (company, Glassdoor, funding, news). Writes structured results to company_research and job_assessments tables. Triggered by prompt containing "job_id=N command_id=N db=/path/jobs.db".
+description: Research a single job posting from PocketBase. Does real web research (company, Glassdoor, funding, news). Writes structured results to company_research and job_assessments tables. Triggered by prompt containing "job_id=<ID> command_id=<ID>".
 ---
 
 # Job Research
@@ -15,29 +15,33 @@ description: Research a single job posting from SQLite DB. Does real web researc
 
 ## Input
 
-Prompt contains: `job_id=<N> command_id=<N> db=<path>`
+Prompt contains: `job_id=<ID> command_id=<ID>`
 
-Parse these three values before doing anything else.
+Parse these two values before doing anything else. IDs are strings (PocketBase record IDs).
 
 ---
 
 ## Step 1: Mark command running + read job
 
-```bash
-python3 -c "
-import sqlite3, json, sys
-db = '<db_path>'
-con = sqlite3.connect(db)
-con.row_factory = sqlite3.Row
-con.execute(\"UPDATE agent_commands SET status='running', started_at=datetime('now') WHERE id=?\", (<command_id>,))
-con.commit()
-row = con.execute('SELECT * FROM jobs WHERE id=?', (<job_id>,)).fetchone()
-if not row:
+```python
+import sys, json
+sys.path.insert(0, '.')
+from scripts.pb_client import get_pb, pad_id
+import datetime
+
+job_id = '<job_id>'
+command_id = '<command_id>'
+
+pb = get_pb()
+pb.update('agent_commands', pad_id(command_id), {
+    'status': 'running',
+    'started_at': datetime.datetime.utcnow().isoformat() + 'Z',
+})
+job = pb.get_job(job_id)
+if not job:
     print('ERROR: job not found', file=sys.stderr)
     sys.exit(1)
-print(json.dumps(dict(row)))
-con.close()
-"
+print(json.dumps(job))
 ```
 
 ---
@@ -47,49 +51,38 @@ con.close()
 Run this immediately after Step 1, before the fit check.
 
 ```python
-import sqlite3, re, sys
+import sys, re, json
+sys.path.insert(0, '.')
+from scripts.pb_client import get_pb, pad_id
 
-db = '<db_path>'
-job_id = <job_id>
-con = sqlite3.connect(db)
-con.row_factory = sqlite3.Row
+job_id = '<job_id>'
+pb = get_pb()
 
-job = con.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
-company_id = job['company_id']
-posted_name = (job['posted_company_name'] or '').strip()
+job = pb.get_job(job_id)
+company_id = job.get('company_id') or ''
+posted_name = (job.get('posted_company_name') or '').strip()
 
 if not company_id and posted_name:
-    # Try to match an existing company by display_name or normalized_name
     normalized = re.sub(r'[^a-z0-9]', '', posted_name.lower())
-    row = con.execute(
-        "SELECT id FROM companies WHERE normalized_name=? OR display_name=?",
-        (normalized, posted_name)
-    ).fetchone()
-    if row:
-        company_id = row['id']
-        con.execute(
-            "UPDATE jobs SET company_id=?, updated_at=datetime('now') WHERE id=?",
-            (company_id, job_id)
-        )
-        con.commit()
+    existing = pb.get_one('companies',
+        f"normalized_name='{normalized}' || display_name='{posted_name.replace(chr(39), chr(92)+chr(39))}'")
+    if existing:
+        company_id = existing['id']
+        pb.update_job(job_id, company_id=company_id)
         print(f'Linked existing company_id={company_id} to job {job_id}')
     else:
-        print(f'No company match for "{posted_name}" — create a company row manually before Step 3')
+        print(f'No company match for "{posted_name}" — create a company row before Step 3')
 
 if company_id:
-    research = con.execute(
-        'SELECT * FROM company_research WHERE company_id=?', (company_id,)
-    ).fetchone()
+    research = pb.get_one('company_research', f"company_id='{company_id}'")
     if research:
         print(f'Existing research found for company_id={company_id}')
-        print(dict(research))
+        print(json.dumps(research))
         # Signal: SKIP Step 2
     else:
         print(f'company_id={company_id} linked but no research yet — proceed to Step 2')
 else:
     print('No company_id resolved — proceed to Step 2')
-
-con.close()
 ```
 
 ### If existing research found → skip Step 2
@@ -101,17 +94,17 @@ Do NOT redo web research. Instead:
 
 ### If no research → proceed to Step 1.5 then Step 2
 
-**Important:** `db_write_research.py` does NOT create company rows. It only inserts into `company_research` when `job.company_id` is already set and non-null. If `company_id` is NULL, the `company_research` INSERT is silently skipped (only `job_assessments` is written). If you want company research tracked, create the company manually before running `db_write_research.py`:
+**Important:** `db_write_research.py` does NOT create company rows. It only inserts into `company_research` when `job.company_id` is already set and non-null. If `company_id` is empty, the `company_research` INSERT is silently skipped (only `job_assessments` is written). If you want company research tracked, create the company manually before running `db_write_research.py`:
 
 ```python
-import sqlite3, re
-con = sqlite3.connect('jobs.db')
-normalized = re.sub(r'[^a-z0-9]', '', company_name.lower())
-con.execute("INSERT INTO companies (display_name, normalized_name, website_url, created_at, updated_at) VALUES (?,?,?,datetime('now'),datetime('now'))", (company_name, normalized, website_url))
-company_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
-con.execute("UPDATE jobs SET company_id=?, updated_at=datetime('now') WHERE id=?", (company_id, job_id))
-con.commit()
-con.close()
+import sys
+sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+
+pb = get_pb()
+company_id = pb.upsert_company(company_name, domain=website_domain_or_none)
+pb.update_job(job_id, company_id=company_id)
+print(f'Created/linked company_id={company_id}')
 ```
 
 Then run `db_write_research.py` and it will insert into `company_research` using the linked `company_id`.
@@ -306,7 +299,6 @@ Save JSON to `tmp/research_<job_id>.json` (project tmp folder, git-ignored), the
 
 ```bash
 python3 scripts/db_write_research.py \
-  --db <db_path> \
   --job-id <job_id> \
   --command-id <command_id> \
   < tmp/research_<job_id>.json
@@ -472,25 +464,9 @@ For companies with common names (ClickHouse, Maze, Pack, etc.), LinkedIn's `/com
 
 `db_write_research.py` skips the `company_research` INSERT when `job.company_id IS NULL`. **Step 1.3 prevents this** by linking the job to an existing company (or letting `db_write_research.py` create a new one) before research runs. If you skipped Step 1.3 and company_research is missing, link the company manually then re-run `db_write_research.py`.
 
-### Missing `clutch_summary` column in DB schema
+### Missing `clutch_summary` column
 
-`db_write_research.py` references a `clutch_summary` column in its `INSERT INTO company_research` statement, but the `create_db()` function in `scripts/db.py` does not create this column. If you run `db_write_research.py` on a DB initialized from scratch, you'll get:
-```
-sqlite3.OperationalError: table company_research has no column named clutch_summary
-```
-
-**Fix**: Add the column to the running DB:
-```bash
-python3 -c "
-from scripts.db import get_connection
-con = get_connection('jobs.db')
-con.execute('ALTER TABLE company_research ADD COLUMN clutch_summary TEXT')
-con.commit()
-con.close()
-"
-```
-
-The schema file (`scripts/db.py:create_db()`) also lacks this column — you may need to add it there for future fresh DBs, but `ALTER TABLE` on the existing DB is sufficient to unblock the current research write.
+This issue no longer applies — PocketBase collections are managed via the admin UI and `clutch_summary` is included in the schema. No action needed.
 
 
 ## Error Handling
@@ -498,14 +474,12 @@ The schema file (`scripts/db.py:create_db()`) also lacks this column — you may
 - Missing Glassdoor, LinkedIn, Crunchbase, salary → write `Not found`, continue
 - Hard failure → mark command failed:
 
-```bash
-python3 -c "
-import sqlite3
-con = sqlite3.connect('<db_path>')
-con.execute(\"UPDATE agent_commands SET status='failed', finished_at=datetime('now'), error=? WHERE id=?\", ('<error_message>', <command_id>))
-con.commit()
-con.close()
-"
+```python
+import sys
+sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+pb.complete_command('<command_id>', 'failed', error='<error_message>')
 ```
 
 ---

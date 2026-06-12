@@ -61,12 +61,24 @@ The pipeline enriches jobs one-at-a-time via CDP. For a large batch (100+ jobs),
 
 **Fix after timeout:**
 ```bash
-# Collect unenriched job IDs
-JOB_IDS=$(sqlite3 jobs.db "SELECT id FROM jobs WHERE provider='<name>' AND status='new' ORDER BY id;" | tr '\n' ' ')
+# Collect unenriched job IDs via PocketBase
+JOB_IDS=$(python3 -c "
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+jobs = pb.get_list('jobs', \"provider='<name>' && status='new'\", per_page=500)
+print(' '.join(j['id'] for j in jobs))
+")
 # Run enrichment separately
 python3 scripts/enrich_jobs_batch.py --job-ids $JOB_IDS --workers 3
 # Then screen. DEEPSEEK_API_KEY must already be exported in this shell.
-JOB_IDS=$(sqlite3 jobs.db "SELECT id FROM jobs WHERE provider='<name>' AND status='enriched' AND length(description)>50 ORDER BY id;" | tr '\n' ' ')
+JOB_IDS=$(python3 -c "
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+jobs = pb.get_list('jobs', \"provider='<name>' && status='enriched'\", per_page=500)
+print(' '.join(j['id'] for j in jobs if len(j.get('description') or '') > 50))
+")
 ```
 
 If `batch_screen_jobs.py` is missing, use the underlying module directly:
@@ -121,10 +133,14 @@ check_auth → scrape_jobs → dedup_jobs → ingest_jobs → enrich_job (per jo
 
 Jobs ingested from some sources (csvfeed with missing data, malformed scrapes) can have an empty `posted_company_name`. Searching by company name will miss them. Always use URL or id for reliable lookup:
 
-```sql
-SELECT id, title, url FROM jobs WHERE url LIKE '%frontcareers%';
--- or
-SELECT id, title, posted_company_name FROM jobs WHERE id=2515;
+```python
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+# by URL pattern
+jobs = pb.get_list('jobs', "url~'frontcareers'")
+# or by id
+job = pb.get_job('000000000002515')
 ```
 
 When a user says "find job at company X" and no results match, check both the URL pattern AND do a broader search — the company field might be blank even though the URL clearly identifies the employer.
@@ -136,9 +152,15 @@ When the pipeline has a script for a job — `db_write_job_fields.py`, `db_write
 The correct pattern for a batch loop:
 
 ```bash
-# Loop over job IDs directly, don't write a Python wrapper
-for jid in $(sqlite3 jobs.db "SELECT id FROM jobs WHERE provider='csvfeed' AND status='enrich_failed'"); do
-  python3 scripts/db_write_job_fields.py --db jobs.db --job-id $jid < tmp/fields_$jid.json
+# Get IDs from PocketBase, loop over them directly
+for jid in $(python3 -c "
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+jobs = pb.get_list('jobs', \"provider='csvfeed' && status='enrich_failed'\", per_page=500)
+print(' '.join(j['id'] for j in jobs))
+"); do
+  python3 scripts/db_write_job_fields.py --job-id $jid < tmp/fields_$jid.json
 done
 ```
 
@@ -264,13 +286,19 @@ Do NOT write a custom script. Use `db_write_job_fields.py`:
 ```bash
 # For each csvfeed job (by URL match), pipe JSON fields to db_write_job_fields.py
 echo '{"title":"...","description":"...","location":"...","salary_range":"...","date_posted":"..."}' | \
-  python3 scripts/db_write_job_fields.py --db jobs.db --job-id <ID>
+  python3 scripts/db_write_job_fields.py --job-id <ID>
 ```
 
 Then reset status from `enrich_failed` to `new`:
 
-```bash
-python3 -c "from scripts.db import get_connection; con=get_connection('jobs.db'); con.execute(\"UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE provider='csvfeed' AND status='enrich_failed'\"); con.commit(); con.close()"
+```python
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+jobs = pb.get_list('jobs', "provider='csvfeed' && status='enrich_failed'", per_page=500)
+for j in jobs:
+    pb.update_job(j['id'], status='new', pipeline_status='new')
+print(f'Reset {len(jobs)} jobs')
 ```
 
 ##### 6. Batch screening

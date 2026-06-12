@@ -4,16 +4,26 @@ Migrate jobs.db → PocketBase.
 Creates collections then imports all data with original integer IDs as strings.
 """
 
+import os
 import sqlite3
 import json
 import sys
 import requests
 from pathlib import Path
 
-PB_URL = "http://72.61.183.105:8090"
-DB_PATH = Path(__file__).parent.parent / "jobs.db"
-ADMIN_EMAIL = "zallesov@gmail.com"
-ADMIN_PASSWORD = "Pb#9kX2mV7nQ4wL8"
+_ROOT = Path(__file__).parent.parent
+_ENV_FILE = _ROOT / ".env"
+if _ENV_FILE.exists():
+    for _line in _ENV_FILE.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
+
+PB_URL = os.environ.get("POCKETBASE_URL", "http://localhost:8090").rstrip("/")
+DB_PATH = _ROOT / "jobs.db"
+ADMIN_EMAIL = os.environ.get("POCKETBASE_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("POCKETBASE_ADMIN_PASSWORD", "")
 
 # ---------------------------------------------------------------------------
 # Collection schemas

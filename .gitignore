@@ -108,6 +108,7 @@ hermes-profile/skills/.usage.json
 
 # Hermes distribution/runtime local files
 .env
+dashboard/.env.local
 .hermes/
 state.db
 state.db-shm

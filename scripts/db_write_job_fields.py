@@ -3,15 +3,17 @@
 Update job fields from JSON (stdin) after URL scrape.
 
 Usage:
-  echo '<json>' | python3 db_write_job_fields.py --db jobs.db --job-id 123
+  echo '<json>' | python3 db_write_job_fields.py --job-id 123
+
+--db is accepted but ignored (PocketBase config comes from .env).
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from db import get_connection, log_event
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from scripts.pb_client import get_pb
 
 UPDATABLE_FIELDS = [
     "title", "posted_company_name", "location", "country",
@@ -21,8 +23,8 @@ UPDATABLE_FIELDS = [
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", required=True)
-    parser.add_argument("--job-id", type=int, required=True)
+    parser.add_argument("--db", help="(ignored — PocketBase is used)")
+    parser.add_argument("--job-id", required=True, dest="job_id")
     args = parser.parse_args()
 
     try:
@@ -31,25 +33,18 @@ def main() -> int:
         print(f"ERROR: invalid JSON: {e}", file=sys.stderr)
         return 1
 
-    con = get_connection(args.db)
+    pb = get_pb()
     updates = {k: data[k] for k in UPDATABLE_FIELDS if k in data and data[k] is not None}
     if updates:
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        params = list(updates.values()) + [args.job_id]
-        con.execute(
-            f"UPDATE jobs SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
-            params,
-        )
-        log_event(
-            con, "job", args.job_id, "fields_scraped", "hermes_scrape",
+        pb.update_job(args.job_id, **updates)
+        pb.log_event(
+            "job", args.job_id, "fields_scraped", "hermes_scrape",
             json.dumps({"fields": list(updates.keys())}),
         )
-        con.commit()
         print(f"Updated: {', '.join(updates.keys())}", file=sys.stderr)
     else:
         print("No fields to update", file=sys.stderr)
 
-    con.close()
     return 0
 
 

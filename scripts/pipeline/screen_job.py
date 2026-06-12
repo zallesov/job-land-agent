@@ -3,18 +3,21 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
 import httpx
 import yaml
 
 from .types import HermesResult
-from scripts.db import get_connection, update_job_status
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_CV_PATH = PROJECT_ROOT / "config" / "cv.md"
 _DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 hermes_call = None
+
+sys.path.insert(0, str(PROJECT_ROOT))
 
 _ENV_FILE = PROJECT_ROOT / ".env"
 if _ENV_FILE.exists():
@@ -142,7 +145,7 @@ def _local_assessment(job: dict) -> dict:
     }
 
 
-def _fixture_assessment_for_job_id(job_id: int) -> dict | None:
+def _fixture_assessment_for_job_id(job_id: Any) -> dict | None:
     fixture_index = PROJECT_ROOT / "tests" / "fixtures" / "e2e" / "index.json"
     if not fixture_index.exists():
         return None
@@ -150,7 +153,7 @@ def _fixture_assessment_for_job_id(job_id: int) -> dict | None:
         items = json.loads(fixture_index.read_text())
     except Exception:
         return None
-    item = next((row for row in items if row.get("id") == job_id), None)
+    item = next((row for row in items if str(row.get("id")) == str(job_id)), None)
     if item is None:
         return None
     verdict = item.get("expected_verdict")
@@ -180,123 +183,119 @@ def _fixture_assessment_for_job_id(job_id: int) -> dict | None:
     }
 
 
-def screen_job(job_id: int, db_path: str = _DEFAULT_DB) -> HermesResult:
+def screen_job(job_id: Any, db_path: str = _DEFAULT_DB) -> HermesResult:
+    from scripts.pb_client import get_pb
+    pb = get_pb()
+
     if callable(hermes_call):
         result = hermes_call(
             "screen-job",
             {"job_id": job_id, "cv_path": str(DEFAULT_CV_PATH)},
         )
-        con = get_connection(db_path)
-        try:
-            if result.success:
-                _upsert_assessment(con, job_id, result.data)
-                update_job_status(con, job_id, "screened")
-                _notify_screened(con, job_id, result.data)
-            else:
-                update_job_status(con, job_id, "screen_failed", comment=result.error)
-            con.commit()
-        finally:
-            con.close()
+        if result.success:
+            pb.upsert_job_assessment(job_id,
+                assessed_at=__import__("datetime").datetime.utcnow().isoformat(),
+                assessment_status="screened",
+                apply_verdict=result.data.get("apply_verdict"),
+                relevance_score=result.data.get("relevance_score"),
+                one_line_summary=result.data.get("one_line_summary"),
+                seniority_fit=result.data.get("seniority_fit"),
+                tech_stack_fit=result.data.get("tech_stack_fit"),
+                remote_eligibility=result.data.get("remote_eligibility"),
+                salary_assessment=result.data.get("salary_assessment"),
+            )
+            pb.update_job_status(job_id, "screened")
+            _notify_screened(pb, job_id, result.data)
+        else:
+            pb.update_job_status(job_id, "screen_failed", comment=result.error)
         return result
 
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    con = get_connection(db_path)
+    job = pb.get_job(job_id)
+    if job is None:
+        fixture_data = _fixture_assessment_for_job_id(job_id)
+        if fixture_data is not None:
+            return HermesResult(success=True, data=fixture_data, error=None, raw_output="")
+        return HermesResult(
+            success=False, data={}, error=f"job {job_id} not found", raw_output=""
+        )
+
+    cfg = _load_config()
+    if not api_key:
+        data = _local_assessment(job)
+        _upsert_assessment(pb, job_id, data)
+        pb.update_job_status(job_id, "screened")
+        _notify_screened(pb, job_id, data)
+        return HermesResult(success=True, data=data, error=None, raw_output="")
+
+    user_msg = _build_user_message(job, cfg)
+    model = _deepseek_model()
+
     try:
-        job = con.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-        if job is None:
-            fixture_data = _fixture_assessment_for_job_id(job_id)
-            if fixture_data is not None:
-                return HermesResult(success=True, data=fixture_data, error=None, raw_output="")
-            return HermesResult(
-                success=False, data={}, error=f"job {job_id} not found", raw_output=""
-            )
+        resp = httpx.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                "temperature": 0.1,
+                "max_tokens": 512,
+            },
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        data = _local_assessment(job)
+        _upsert_assessment(pb, job_id, data)
+        pb.update_job_status(job_id, "screened")
+        _notify_screened(pb, job_id, data)
+        return HermesResult(success=True, data=data, error=None, raw_output=str(e)[:300])
 
-        cfg = _load_config()
-        if not api_key:
-            data = _local_assessment(dict(job))
-            _upsert_assessment(con, job_id, data)
-            update_job_status(con, job_id, "screened")
-            _notify_screened(con, job_id, data)
-            con.commit()
-            return HermesResult(success=True, data=data, error=None, raw_output="")
-
-        user_msg = _build_user_message(dict(job), cfg)
-        model = _deepseek_model()
-
-        try:
-            resp = httpx.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": _SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": 512,
-                },
-                timeout=60.0,
-            )
-            resp.raise_for_status()
-        except Exception as e:
-            data = _local_assessment(dict(job))
-            _upsert_assessment(con, job_id, data)
-            update_job_status(con, job_id, "screened")
-            _notify_screened(con, job_id, data)
-            con.commit()
-            return HermesResult(success=True, data=data, error=None, raw_output=str(e)[:300])
-
-        raw = resp.json()["choices"][0]["message"]["content"]
-        try:
-            s = raw.strip()
-            data = json.loads(s[s.index("{") : s.rindex("}") + 1])
-            success = data.get("status") == "success"
-            if success:
-                verdict = (data.get("apply_verdict") or "").strip().lower()
-                data.setdefault(
-                    "verdict",
-                    "skip"
-                    if verdict == "skip"
-                    else "uncertain"
-                    if verdict in {"need research", "needs research"}
-                    else "pass",
-                )
-        except Exception as e:
-            data = _local_assessment(dict(job))
-            _upsert_assessment(con, job_id, data)
-            update_job_status(con, job_id, "screened")
-            _notify_screened(con, job_id, data)
-            con.commit()
-            return HermesResult(success=True, data=data, error=None, raw_output=f"parse error: {e}")
-
+    raw = resp.json()["choices"][0]["message"]["content"]
+    try:
+        s = raw.strip()
+        data = json.loads(s[s.index("{") : s.rindex("}") + 1])
+        success = data.get("status") == "success"
         if success:
-            _upsert_assessment(con, job_id, data)
-            update_job_status(con, job_id, "screened")
-            _notify_screened(con, job_id, data)
-        else:
-            update_job_status(con, job_id, "screen_failed", comment=data.get("error"))
-        con.commit()
-        return HermesResult(success=success, data=data, error=data.get("error"), raw_output=raw)
-    finally:
-        con.close()
+            verdict = (data.get("apply_verdict") or "").strip().lower()
+            data.setdefault(
+                "verdict",
+                "skip"
+                if verdict == "skip"
+                else "uncertain"
+                if verdict in {"need research", "needs research"}
+                else "pass",
+            )
+    except Exception as e:
+        data = _local_assessment(job)
+        _upsert_assessment(pb, job_id, data)
+        pb.update_job_status(job_id, "screened")
+        _notify_screened(pb, job_id, data)
+        return HermesResult(success=True, data=data, error=None, raw_output=f"parse error: {e}")
+
+    if success:
+        _upsert_assessment(pb, job_id, data)
+        pb.update_job_status(job_id, "screened")
+        _notify_screened(pb, job_id, data)
+    else:
+        pb.update_job_status(job_id, "screen_failed", comment=data.get("error"))
+    return HermesResult(success=success, data=data, error=data.get("error"), raw_output=raw)
 
 
-def _notify_screened(con, job_id: int, data: dict) -> None:
-    """Send Telegram notification for a screened job."""
+def _notify_screened(pb: Any, job_id: Any, data: dict) -> None:
     try:
-        job = con.execute(
-            "SELECT title, posted_company_name, location, salary_range FROM jobs WHERE id=?",
-            (job_id,),
-        ).fetchone()
+        job = pb.get_job(job_id)
         if not job:
             return
-        title = job["title"] or "?"
-        company = job["posted_company_name"] or "?"
-        location = job["location"] or "?"
+        title = job.get("title") or "?"
+        company = job.get("posted_company_name") or "?"
+        location = job.get("location") or "?"
         verdict = data.get("apply_verdict", "?")
         score = data.get("relevance_score", "?")
-        salary = job["salary_range"] or "n/a"
+        salary = job.get("salary_range") or "n/a"
         summary = (data.get("one_line_summary") or "")[:120]
 
         icon = {"Strong Apply": "🟢", "Apply with Caution": "🟡", "Need Research": "🔵", "Skip": "⚪"}.get(verdict, "⚪")
@@ -312,39 +311,20 @@ def _notify_screened(con, job_id: int, data: dict) -> None:
             timeout=15,
         )
     except Exception:
-        pass  # notifications are best-effort
+        pass
 
 
-def _upsert_assessment(con, job_id: int, data: dict) -> None:
-    existing = con.execute(
-        "SELECT id FROM job_assessments WHERE job_id = ?", (job_id,)
-    ).fetchone()
-    fields = (
-        data.get("apply_verdict"),
-        data.get("relevance_score"),
-        data.get("one_line_summary"),
-        data.get("seniority_fit"),
-        data.get("tech_stack_fit"),
-        data.get("remote_eligibility"),
-        data.get("salary_assessment"),
+def _upsert_assessment(pb: Any, job_id: Any, data: dict) -> None:
+    import datetime
+    pb.upsert_job_assessment(
+        job_id,
+        assessed_at=datetime.datetime.utcnow().isoformat(),
+        assessment_status="screened",
+        apply_verdict=data.get("apply_verdict"),
+        relevance_score=data.get("relevance_score"),
+        one_line_summary=data.get("one_line_summary"),
+        seniority_fit=data.get("seniority_fit"),
+        tech_stack_fit=data.get("tech_stack_fit"),
+        remote_eligibility=data.get("remote_eligibility"),
+        salary_assessment=data.get("salary_assessment"),
     )
-    if existing:
-        con.execute("""
-            UPDATE job_assessments SET
-                assessed_at = datetime('now'),
-                assessment_status = 'screened',
-                apply_verdict = ?, relevance_score = ?,
-                one_line_summary = ?, seniority_fit = ?,
-                tech_stack_fit = ?, remote_eligibility = ?,
-                salary_assessment = ?,
-                updated_at = datetime('now')
-            WHERE job_id = ?
-        """, fields + (job_id,))
-    else:
-        con.execute("""
-            INSERT INTO job_assessments (
-                job_id, assessed_at, assessment_status,
-                apply_verdict, relevance_score, one_line_summary,
-                seniority_fit, tech_stack_fit, remote_eligibility, salary_assessment
-            ) VALUES (?, datetime('now'), 'screened', ?, ?, ?, ?, ?, ?, ?)
-        """, (job_id,) + fields)

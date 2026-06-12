@@ -64,21 +64,18 @@ See `references/ssr-extraction-examples.md` for per-platform extraction patterns
 echo '<json>' > tmp/job_fields_<id>.json
 
 # Use < redirect — cat pipes can be blocked by the security scanner
-python3 scripts/db_write_job_fields.py --db jobs.db --job-id <id> < tmp/job_fields_<id>.json
+python3 scripts/db_write_job_fields.py --job-id <id> < tmp/job_fields_<id>.json
 ```
 
 Supported fields: `title`, `posted_company_name`, `location`, `country`, `remote_scope`, `description`, `apply_url`, `date_posted`.
 
 3. **Reset job status** from `enrich_failed` to `new` so the pipeline sees it as ready:
 
-```bash
-python3 -c "
-from scripts.db import get_connection
-con = get_connection('jobs.db')
-con.execute(\"UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE id=<id>\")
-con.commit()
-con.close()
-"
+```python
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+pb.update_job('<job_id>', status='new', pipeline_status='new')
 ```
 
 Also write `salary_range` and `country` in the same update if you extracted them from the page.
@@ -97,36 +94,25 @@ curl -s http://localhost:9222/json/version | grep -q "{" && echo "OK" || echo "N
 
 If `NOT_RUNNING`: tell user to run `bash start-chrome.sh` first. Do NOT start Chrome yourself via terminal background — Chrome can crash silently and you won't notice. The user starts Chrome manually.
 
-## Critical pre-step: Find the correct DB
+## Critical pre-step: Verify PocketBase connection
 
-**Do NOT create a new `jobs.db` from scratch.** There IS an existing database at `~/.hermes/profiles/joblandagent-dev/jobs.db` with hundreds of jobs. Before running any pipeline command:
+All data is in PocketBase (remote). Verify connection before any pipeline command:
 
-```bash
-# List all jobs.db files outside node_modules
-find ~ -name "jobs.db" -not -path "*/node_modules/*" -not -path "*/Library/*" 2>/dev/null
-
-# Check sizes to find the real one
-for f in $(find ~ -name "jobs.db" -not -path "*/node_modules/*" -not -path "*/Library/*" 2>/dev/null); do
-  echo "$(wc -c < "$f" | tr -d ' ')  $f"
-done
-
-# Check the profile-local DB (this is the authoritative one)
-python3 -c "import sqlite3; c=sqlite3.connect('$HOME/.hermes/profiles/joblandagent-dev/jobs.db'); print(c.execute('SELECT COUNT(*) FROM jobs').fetchone()[0], 'jobs'); c.close()"
+```python
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+count = len(pb.get_list('jobs', per_page=1))
+print(f'PocketBase reachable. Job count check: {count} (showing 1)')
 ```
 
-If the project root (`/Users/zall/interviews/`) has a `jobs.db` that's empty or small while the profile has a large one, symlink instead of creating fresh:
-
-```bash
-ln -sf ~/.hermes/profiles/joblandagent-dev/jobs.db jobs.db
-```
-
-The `db_write_job_fields.py`, `db_write_research.py`, and the `add_job_by_url.py` scripts all use `<cwd>/jobs.db` by default. If the CWD points to the wrong directory, pass `--db` explicitly.
+Config comes from `.env`: `POCKETBASE_URL`, `POCKETBASE_ADMIN_EMAIL`, `POCKETBASE_ADMIN_PASSWORD`.
 
 ## Pitfalls
 
-### Connecting to wrong DB
+### Wrong PocketBase URL
 
-`add_job_by_url.py` defaults `--db` to `<project_root>/jobs.db`. If the project is symlinked to the profile DB, everything works. If you created a fresh DB (e.g. by running `create_db('jobs.db')`), you'll get job_id=1 on an empty database while the real 273 jobs sit untouched in the profile. Always check the DB size and job count first.
+The `.env` file controls the target PocketBase instance. If `POCKETBASE_URL` is not set, it defaults to `http://localhost:8090`. Verify the URL is correct before running any pipeline command.
 
 ### Chrome crash during enrichment
 
@@ -172,20 +158,22 @@ Embedding multi-line Python with single/double quotes inside `python3 -c "..."` 
 **Instead of:**
 ```bash
 python3 -c "
-from scripts.db import get_connection
-con = get_connection('jobs.db')
-con.execute(\"UPDATE jobs SET status='new' WHERE id=2521\")
+import sys; sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+pb.update_job('2521', status='new', pipeline_status='new')
 "
 ```
 
 **Write a script to `tmp/` and run it:**
 ```bash
 cat > tmp/reset_job.py << 'PYEOF'
-from scripts.db import get_connection
-con = get_connection('jobs.db')
-con.execute("UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE id=2521")
-con.commit()
-con.close()
+import sys
+sys.path.insert(0, '.')
+from scripts.pb_client import get_pb
+pb = get_pb()
+pb.update_job('000000000002521', status='new', pipeline_status='new')
+print('reset done')
 PYEOF
 python3 tmp/reset_job.py
 ```
@@ -195,4 +183,4 @@ Or use `write_file` to create the script, then `terminal` to run it. This avoids
 If the security scanner blocks the same command 2+ times, do NOT retry. The threat model for that command won't change on the 3rd attempt. Instead:
 - Break the command into smaller steps (write intermediate files first, then pipe)
 - Use the embedded scripting tool (`execute_code`) which has different security rules
-- Or skip the command and use a different approach entirely (e.g. Python `sqlite3` via execute_code instead of terminal pipes)
+- Or skip the command and use a different approach entirely (e.g. Python pb_client via execute_code instead of terminal pipes)
