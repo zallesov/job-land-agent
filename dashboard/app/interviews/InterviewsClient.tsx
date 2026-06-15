@@ -26,12 +26,6 @@ function formatDate(raw: string | null): string {
   return `${datePart} · ${time}`;
 }
 
-/** Convert stored value to datetime-local input format "YYYY-MM-DDTHH:MM" */
-function toDatetimeLocal(raw: string): string {
-  if (!raw) return "";
-  if (raw.includes("T")) return raw.slice(0, 16); // trim seconds/ms
-  return `${raw}T00:00`;                           // date-only → midnight
-}
 
 // ── constants ──────────────────────────────────────────────────────────────────
 
@@ -734,7 +728,7 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
   const toggleExpand = useCallback((id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
       return next;
     });
   }, []);
