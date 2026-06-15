@@ -19,6 +19,9 @@ Use this skill to update one interview-process record per company/process.
 - `references/interview-calendar-mapping.md` — local review-table pattern for mapping every interview date to its matching calendar event URL and title before any DB write.
 - `references/interview-calendar-ui.md` — calendar URL-backed interview dates, dashboard editing behavior, and comments textarea conventions.
 - `references/interview-dates-with-urls.md` — date/url schema for calendar-backed interview entries and dashboard expectations.
+- `references/dashboard-cache-freshness.md` — when the API is correct but `/interviews` shows stale dates, plus the page-cache fix and verification.
+- `references/pocketbase-dry-run-and-write.md` — PocketBase-era dry-run/write workflow, tie-breaking, and write-set shape.
+- `references/calendar-dry-run-pitfalls.md` — dry-run guardrails for duplicate calendar rows, non-interview meetings, and Gmail-vs-calendar source priority.
 
 ## Core model
 
@@ -54,6 +57,8 @@ Use the jobs table to find the process record, job title, job description, and a
 
 If interview dates are now an array, inspect every date separately and map each one to its own calendar evidence before proposing any update. When the process has multiple meetings, build a local review table first with all matched timestamps, titles, and calendar URLs, then decide whether they belong to one process record.
 
+In this profile, interview records live in PocketBase; use the existing PocketBase helpers / pipeline scripts for writes, not raw SQL.
+
 Important: the job description comes from the jobs table only, never from Calendar.
 
 Support file: `references/interview-calendar-mapping.md`
@@ -71,6 +76,7 @@ Important:
 - Use the job description from the Jobs table only.
 - Do not use the calendar text as the job description.
 - Calendar can inform timing and participants, but not the canonical job description.
+- If the user asks for a dry run, summarize the proposed writes first and wait for approval before any PocketBase update.
 
 When sources conflict, prefer the newest explicit evidence and note the conflict in comments.
 
@@ -106,16 +112,11 @@ If the data is explicit and unambiguous, you may proceed without asking. If the 
 ### status / interview_status
 - Update based on the latest real evidence from Gmail/Calendar.
 - Use the process state, not the meeting platform.
-- Standardized capitalized values:
-  - Contacted
-  - Scheduled
-  - Interviewing
-  - Awaiting Feedback
-  - Rejected
-  - Offer
-  - Withdrawn
-  - No Show
-- Use these exact spellings/case for both status and interview_status whenever possible.
+- Match the dashboard field values exactly so the frontend selector stays in sync:
+  - `status`: `applied`, `in_process`, `rejected`, `offer`
+  - `interview_status`: `scheduled`, `awaiting_response`
+- The frontend shows friendly labels (Applied, In Process, Awaiting Feedback, etc.), but the stored values should stay machine-readable and lowercase.
+- If a source uses a different phrase, map it to the nearest frontend-backed value instead of inventing a new state.
 
 ### contacts_json
 - JSON array of contact objects. Each object may contain any of these fields:
@@ -213,6 +214,9 @@ If the data is explicit and unambiguous, you may proceed without asking. If the 
 - Meeting time entries are add/remove only; the time itself does not need inline editing.
 - Keep meeting time display compact: show the time as the link text, but do not render the raw calendar domain beside it.
 - When adding a meeting manually, allow an optional calendar event URL to be stored alongside the timestamp.
+- For PocketBase-backed interview rows, verify `interview_dates_json` via the API before trusting the dashboard view; stale tabs can lag display updates.
+
+Support note: `references/pocketbase-dashboard-verification.md`
 
 ## Update behavior
 
