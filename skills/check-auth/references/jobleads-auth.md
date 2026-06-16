@@ -46,6 +46,6 @@ is more expensive than a cookie check but could be added to check_auth.py as a
 2. Verify by navigating to any search page and confirming company names are visible (not "Solo para miembros registrados")
 3. Delete any bad jobs scraped while unauthenticated:
    ```bash
-   python3 -c "import sqlite3; db=sqlite3.connect('jobs.db'); db.execute(\"DELETE FROM jobs WHERE provider='jobleads'\"); db.commit()"
+   python3 -c "from scripts.pb_client import get_pb; pb=get_pb(); [pb.delete('jobs', j['id']) for j in pb.get_list('jobs', filter=\"provider='jobleads'\")]"
    ```
 4. Re-run scraper: `python3 scripts/scraping_pipeline.py --provider jobleads`

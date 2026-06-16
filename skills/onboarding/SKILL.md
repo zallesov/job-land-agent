@@ -234,7 +234,6 @@ providers:
 job_preferences: "<company/role preferences or empty>"
 languages: "<spoken languages or empty>"
 desired_salary: "<salary range or empty>"
-db_path: jobs.db
 ```
 
 ---

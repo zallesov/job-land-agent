@@ -39,13 +39,10 @@ workflow:
       description: "Open a pipeline_runs row"
       command: >
         python3 -c "
-        import sys; sys.path.insert(0, 'scripts')
-        from db import get_connection, create_pipeline_run
-        con = get_connection('jobs.db')
-        run_id = create_pipeline_run(con, 'daily_pipeline')
-        con.commit()
+        from scripts.pb_client import get_pb
+        pb = get_pb()
+        run_id = pb.create_pipeline_run('daily_pipeline')
         print(run_id)
-        con.close()
         "
       capture_output: true
       output_var: PIPELINE_RUN_ID
@@ -146,27 +143,25 @@ workflow:
             notify_telegram: true
             retry: false
 
-    # Step 2: Ingest artifacts into SQLite
+    # Step 2: Ingest artifacts into PocketBase
     - id: ingest
-      description: "Merge all provider artifacts into canonical DB"
+      description: "Merge all provider artifacts into PocketBase"
       command: >
-        python3 scripts/ingest_provider_outputs.py
-        --db jobs.db
-        --all-latest
+        python3 scripts/scraping_pipeline.py --ingest-only --all-latest
       timeout_seconds: 120
       on_failure: abort
 
     # Step 3: Tag new jobs
     - id: tag_new_jobs
       description: "Keyword-based light tags on newly inserted jobs"
-      command: python3 scripts/tag_new_jobs.py --db jobs.db
+      command: python3 scripts/tag_new_jobs.py
       timeout_seconds: 30
       on_failure: continue
 
     # Step 4: Telegram daily digest
     - id: telegram_digest
       description: "Compact summary to Telegram"
-      command: python3 scripts/telegram_notify.py daily-digest --db jobs.db
+      command: python3 scripts/telegram_notify.py daily-digest
       timeout_seconds: 30
       on_failure: warn
 
@@ -175,13 +170,11 @@ workflow:
       description: "Mark pipeline_runs row as complete"
       command: >
         python3 -c "
-        import sys, json; sys.path.insert(0, 'scripts')
-        from db import get_connection, finish_pipeline_run
-        con = get_connection('jobs.db')
-        finish_pipeline_run(con, $PIPELINE_RUN_ID, '$PIPELINE_STATUS',
+        import json
+        from scripts.pb_client import get_pb
+        pb = get_pb()
+        pb.finish_pipeline_run('$PIPELINE_RUN_ID', '$PIPELINE_STATUS',
           summary_json=json.dumps({'status': '$PIPELINE_STATUS'}))
-        con.commit()
-        con.close()
         "
       on_failure: warn
 
@@ -215,7 +208,7 @@ workflow:
         {breakdown_by_provider}
         Top: {top_3_jobs}
         Dashboard: http://localhost:3000
-      command: python3 scripts/telegram_notify.py daily-digest --db jobs.db
+      command: python3 scripts/telegram_notify.py daily-digest
 
     provider_failure:
       format: |
@@ -227,7 +220,7 @@ workflow:
         Manually: python3 scripts/scrape_{provider_id}.py --location berlin --wait-auth
       command: >
         python3 scripts/telegram_notify.py pipeline-failure
-        --db jobs.db --provider {provider_id} --error "{error_summary}"
+        --provider {provider_id} --error "{error_summary}"
 
   # ── Artifact Rules ──────────────────────────────────────────────
   artifacts:

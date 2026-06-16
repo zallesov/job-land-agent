@@ -57,7 +57,7 @@ fields = {
 Write to DB:
 ```bash
 echo '<json>' > tmp/job_fields_<id>.json
-python3 scripts/db_write_job_fields.py --db jobs.db --job-id <id> < tmp/job_fields_<id>.json
+python3 scripts/db_write_job_fields.py --job-id <id> < tmp/job_fields_<id>.json
 ```
 
 **Note:** `cat file.json | python3 script.py` piping can be blocked by the security scanner. Use `<` redirect instead.

@@ -71,7 +71,7 @@ After ingest, job descriptions from the CSV must be written to the DB. Match by 
 
 ```bash
 echo '{"title":"...","description":"...","location":"...","salary_range":"..."}' | \
-  python3 scripts/db_write_job_fields.py --db jobs.db --job-id <ID>
+  python3 scripts/db_write_job_fields.py --job-id <ID>
 ```
 
 Truncate descriptions to 3000 chars to match `enrich_job.py`'s limit.

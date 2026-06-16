@@ -23,25 +23,22 @@ Extract `job_id` from the message before doing anything else.
 
 ## Phase 1: Read job, config, and CV
 
-```bash
-python3 -c "
-import sqlite3, json, sys, yaml
-db = yaml.safe_load(open('config/user.yaml')).get('db_path', 'jobs.db')
-con = sqlite3.connect(db)
-con.row_factory = sqlite3.Row
-row = con.execute('''
-    SELECT j.id, j.title, j.posted_company_name, j.apply_url, j.url, j.description,
-           ja.apply_verdict, ja.one_line_summary
-    FROM jobs j
-    LEFT JOIN job_assessments ja ON ja.job_id = j.id
-    WHERE j.id = ?
-''', (<job_id>,)).fetchone()
-if not row:
+```python
+from scripts.pb_client import get_pb
+import json, sys
+pb = get_pb()
+job = pb.get_job(<job_id>)
+if not job:
     print('ERROR: job not found', file=sys.stderr)
     sys.exit(1)
-print(json.dumps(dict(row)))
-con.close()
-"
+assessment = pb.get_one('job_assessments', f"job_id='{job['id']}'") or {}
+row = {
+    'id': job['id'], 'title': job.get('title'), 'posted_company_name': job.get('posted_company_name'),
+    'apply_url': job.get('apply_url') or job.get('url'), 'url': job.get('url'),
+    'description': job.get('description'),
+    'apply_verdict': assessment.get('apply_verdict'), 'one_line_summary': assessment.get('one_line_summary'),
+}
+print(json.dumps(row))
 ```
 
 Capture: `title`, `posted_company_name`, `apply_url` (fallback to `url`), `description`.
@@ -385,15 +382,9 @@ Once the user confirms they have clicked Submit:
 1. Set `user_status='applied'` in the DB:
 
 ```python
-import sqlite3, yaml
-db = yaml.safe_load(open('config/user.yaml')).get('db_path', 'jobs.db')
-con = sqlite3.connect(db)
-con.execute(
-    "UPDATE jobs SET user_status='applied', updated_at=datetime('now') WHERE id=?",
-    (<job_id>,)
-)
-con.commit()
-con.close()
+from scripts.pb_client import get_pb
+pb = get_pb()
+pb.update_job(<job_id>, user_status='applied')
 print(f"Set user_status=applied for job {<job_id>}")
 ```
 

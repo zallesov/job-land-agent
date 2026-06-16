@@ -70,26 +70,24 @@ import json, subprocess
 # For each ingested job (matched by URL):
 fields = {"title": ..., "description": ..., "location": ..., "salary_range": ...}
 result = subprocess.run(
-    ["python3", "scripts/db_write_job_fields.py", "--db", "jobs.db", "--job-id", str(job_id)],
+    ["python3", "scripts/db_write_job_fields.py", "--job-id", str(job_id)],
     input=json.dumps(fields), capture_output=True, text=True
 )
 ```
 
 Then reset status:
 ```bash
-python3 -c "from scripts.db import get_connection; con=get_connection('jobs.db'); con.execute(\"UPDATE jobs SET status='new', pipeline_status='new', updated_at=datetime('now') WHERE provider='csvfeed' AND status='enrich_failed'\"); con.commit(); con.close()"
+python3 -c "from scripts.pb_client import get_pb; pb=get_pb(); [pb.update('jobs', j['id'], {'pipeline_status': 'new'}) for j in pb.get_list('jobs', filter=\"provider='csvfeed' && pipeline_status='enrich_failed'\")]"
 ```
 
 ## Step 6: Batch Screening
 
 ```bash
 python3 -c "
-import sys; sys.path.insert(0, 'scripts')
-from pipeline.screen_jobs_batch import screen_jobs_batch
-import sqlite3
-con = sqlite3.connect('jobs.db')
-ids = [str(r[0]) for r in con.execute(\"SELECT id FROM jobs WHERE provider='csvfeed' AND status='new' ORDER BY id\").fetchall()]
-con.close()
+from scripts.pb_client import get_pb
+from scripts.pipeline.screen_jobs_batch import screen_jobs_batch
+pb = get_pb()
+ids = [j['id'] for j in pb.get_list('jobs', filter="provider='csvfeed' && pipeline_status='new'", sort='id')]
 ok_ids, failures = screen_jobs_batch(ids, max_workers=5)
 print(f'{len(ok_ids)} ok, {len(failures)} failed')
 "

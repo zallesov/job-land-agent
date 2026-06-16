@@ -60,15 +60,16 @@ Do not write a custom permanent script. Use `db_write_job_fields.py`:
 
 ```bash
 echo '{"title":"...","description":"...","location":"...","salary_range":"...","date_posted":"..."}' | \
-  python3 scripts/db_write_job_fields.py --db jobs.db --job-id <ID>
+  python3 scripts/db_write_job_fields.py --job-id <ID>
 ```
 
 Then reset status from `enrich_failed` to `new`:
 
-```sql
-UPDATE jobs
-SET status='new', pipeline_status='new', updated_at=datetime('now')
-WHERE provider='csvfeed' AND status='enrich_failed';
+```python
+from scripts.pb_client import get_pb
+pb = get_pb()
+for j in pb.get_list('jobs', filter="provider='csvfeed' && pipeline_status='enrich_failed'"):
+    pb.update('jobs', j['id'], {'pipeline_status': 'new'})
 ```
 
 ### 6. Batch screening
