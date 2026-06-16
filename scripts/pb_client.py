@@ -106,7 +106,9 @@ class PBClient:
         items = result.get("items", [])
         return items[0] if items else None
 
-    def get_list(self, collection: str, filter_str: str = "", per_page: int = 500, sort: str = "") -> list[dict]:
+    def get_list(self, collection: str, filter_str: str = "", per_page: int = 500, sort: str = "", **kwargs) -> list[dict]:
+        if not filter_str and "filter" in kwargs:
+            filter_str = kwargs["filter"]
         params: dict = {"filter": filter_str, "perPage": per_page}
         if sort:
             params["sort"] = sort
