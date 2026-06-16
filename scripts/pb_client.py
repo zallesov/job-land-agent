@@ -106,8 +106,11 @@ class PBClient:
         items = result.get("items", [])
         return items[0] if items else None
 
-    def get_list(self, collection: str, filter_str: str = "", per_page: int = 500) -> list[dict]:
-        qs = urllib.parse.urlencode({"filter": filter_str, "perPage": per_page})
+    def get_list(self, collection: str, filter_str: str = "", per_page: int = 500, sort: str = "") -> list[dict]:
+        params: dict = {"filter": filter_str, "perPage": per_page}
+        if sort:
+            params["sort"] = sort
+        qs = urllib.parse.urlencode(params)
         result = self._req("GET", f"/api/collections/{collection}/records?{qs}")
         return result.get("items", [])
 
