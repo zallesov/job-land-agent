@@ -6,26 +6,26 @@ Steps: dedup → ingest → enrich (CDP) → screen (Hermes) → telegram notify
 
 Usage:
   python3 scripts/add_job_by_url.py --url https://wellfound.com/jobs/123-title
-  python3 scripts/add_job_by_url.py --url <url> --db jobs.db --cdp-url http://localhost:9222
+  python3 scripts/add_job_by_url.py --url <url> --cdp-url http://localhost:9222
 """
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scripts.db import get_connection
+from scripts.pb_client import get_pb, pad_id
 from scripts.pipeline.dedup import dedup_jobs
 from scripts.pipeline.ingest import ingest_jobs
 from scripts.pipeline.enrich_job import enrich_job
 from scripts.pipeline.screen_job import screen_job
 from scripts.pipeline.types import ShallowJob
 
-PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://jobs.srv1734074.hstgr.cloud")
 
 
 def _notify(message: str) -> None:
@@ -46,7 +46,7 @@ def _notify(message: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
-    parser.add_argument("--db", default=DEFAULT_DB)
+    parser.add_argument("--db")
     parser.add_argument("--cdp-url", default=DEFAULT_CDP)
     args = parser.parse_args()
 
@@ -88,15 +88,9 @@ def main() -> int:
         return 1
     print("Screened", flush=True)
 
-    con = get_connection(args.db)
-    try:
-        j = con.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-        a = con.execute(
-            "SELECT apply_verdict, relevance_score, one_line_summary FROM job_assessments WHERE job_id = ?",
-            (job_id,),
-        ).fetchone()
-    finally:
-        con.close()
+    pb = get_pb()
+    j = pb.get_job(job_id)
+    a = pb.get_one("job_assessments", f"job_id='{pad_id(job_id)}'")
 
     title = j["title"] or url
     company = j["posted_company_name"] or "?"
@@ -114,7 +108,7 @@ def main() -> int:
         f"{title} @ {company}\n"
         f"Verdict: {verdict}  R:{score}\n"
         f"{summary}\n"
-        f"Dashboard: http://localhost:3000"
+        f"Dashboard: {DASHBOARD_URL}"
     )
     return 0
 
