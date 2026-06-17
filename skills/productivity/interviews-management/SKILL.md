@@ -23,8 +23,7 @@ Use this skill to update one interview-process record per company/process.
 - `references/pocketbase-dry-run-and-write.md` — PocketBase-era dry-run/write workflow, tie-breaking, and write-set shape.
 - `references/calendar-dry-run-pitfalls.md` — dry-run guardrails for duplicate calendar rows, non-interview meetings, and Gmail-vs-calendar source priority.
 - `references/dry-run-reconciliation-heuristics.md` — add/update/tentative dry-run rules, stale-rejection overrides, and calendar-decline handling.
-- `references/interview-pocketbase-tooling.md` — recommended reusable PocketBase interview scripts (`db_read_interviews.py`, `db_write_interview.py`, dry-run/apply helpers) and normalization rules.
-- `references/interview-pocketbase-tooling.md` — PB-client-first interview tooling pattern: avoid ad-hoc JS/heredoc writes, and prefer dedicated read/dry-run/write helpers for repeatable updates.
+- `references/interview-pocketbase-tooling.md` — PB-client-first interview tooling pattern: avoid ad-hoc JS/heredoc writes, prefer reusable `db_read_interviews.py` / `db_write_interview.py` / dry-run helpers, and centralize normalization rules in code.
 
 ## Core model
 
