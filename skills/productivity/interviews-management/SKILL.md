@@ -22,6 +22,9 @@ Use this skill to update one interview-process record per company/process.
 - `references/dashboard-cache-freshness.md` — when the API is correct but `/interviews` shows stale dates, plus the page-cache fix and verification.
 - `references/pocketbase-dry-run-and-write.md` — PocketBase-era dry-run/write workflow, tie-breaking, and write-set shape.
 - `references/calendar-dry-run-pitfalls.md` — dry-run guardrails for duplicate calendar rows, non-interview meetings, and Gmail-vs-calendar source priority.
+- `references/dry-run-reconciliation-heuristics.md` — add/update/tentative dry-run rules, stale-rejection overrides, and calendar-decline handling.
+- `references/interview-pocketbase-tooling.md` — recommended reusable PocketBase interview scripts (`db_read_interviews.py`, `db_write_interview.py`, dry-run/apply helpers) and normalization rules.
+- `references/interview-pocketbase-tooling.md` — PB-client-first interview tooling pattern: avoid ad-hoc JS/heredoc writes, and prefer dedicated read/dry-run/write helpers for repeatable updates.
 
 ## Core model
 
@@ -49,6 +52,10 @@ For a given company/process, actively collect evidence from multiple places:
 2. Calendar
 3. Jobs table
 
+Tooling note:
+- For PocketBase-backed interview work, prefer dedicated Python helpers built on the repo's `scripts/pb_client.py` pattern over ad-hoc Node/heredoc fetch-and-patch snippets.
+- When the repo has no interview-specific helper yet, treat that as a tooling gap and add one (`db_read_interviews.py`, `db_write_interview.py`, `interview_dry_run_recent.py`) before the workflow becomes recurring. This task class repeats often enough that hand-written one-off write commands are a reliability risk.
+
 Use company-name permutations when searching. See `references/interview-evidence-extraction.md` for the current search playbook.
 
 Use Gmail searches around the company name, contact person name, contact email, and obvious permutations.
@@ -72,6 +79,10 @@ Use the strongest explicit source first:
 3. Calendar — timing, meeting invitations, organizer names, meeting dates, event URLs
 4. User-provided data — overrides guesses when explicit
 
+Additional tie-breakers:
+- A generic calendar title like "Interviews (Alexander Zalesov)" or "15 Minute Meeting" is NOT enough to discard the event. If the organizer domain, invite email, or surrounding Gmail thread ties it to a company/process, treat it as valid interview evidence.
+- LinkedIn job-notification emails can still be process evidence when they clearly indicate application submission or rejection, especially for processes that never reached a recruiter thread.
+
 Important:
 - Use the job description from the Jobs table only.
 - Do not use the calendar text as the job description.
@@ -83,6 +94,20 @@ When sources conflict, prefer the newest explicit evidence and note the conflict
 ## Validation step
 
 Before writing updates, prepare a compact proposed update and ask the user to confirm the parameters if anything is ambiguous or inferred.
+
+For this user, prefer a dry-run review before any bulk interview-table update, even when the end goal is to write to PocketBase. Show the proposed adds/updates first, then wait for explicit approval before running the write step.
+
+For dry runs over a recent time window, classify each proposed change as one of:
+- `add`
+- `update`
+- `tentative_add`
+- `ignore`
+
+Special reconciliation rules:
+- A newly scheduled interview round can override a stale `rejected` row for the same process.
+- A declined calendar invite is not, by itself, a hiring rejection.
+- Self-booked placeholders or generic personal interview blocks should be ignored unless Gmail ties them to a real company/process.
+- When later rounds exist for an existing process, extend `interview_dates_json` instead of creating a duplicate row.
 
 Validation should cover:
 - company_name
@@ -223,6 +248,8 @@ Support note: `references/pocketbase-dashboard-verification.md`
 - If Gmail says the candidate is not a fit, mark the process rejected.
 - If Gmail says next step / interview scheduled, reflect that.
 - If Gmail or Calendar only provides a generic meeting title, reconstruct the real role from the surrounding evidence.
+- If the user says a previously rejected process was resumed, prefer the user's correction and move the process back to `in_process`, then append the newly scheduled interview date.
+- If the only available evidence is LinkedIn application mail, you may still update the process: "application sent" supports `applied`, and LinkedIn's rejection/update template supports `rejected` even without a direct recruiter email.
 - Keep the record compact and readable.
 
 ## Good examples

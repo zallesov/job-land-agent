@@ -48,9 +48,11 @@ To enrich all `enrich_failed` jobs, first query the IDs:
 
 ```bash
 python3 -c "
-from scripts.pb_client import get_pb
-pb = get_pb()
-ids = [r['id'] for r in pb.get_list('jobs', \"pipeline_status='enrich_failed'\")]
+import sys; sys.path.insert(0, '.')
+from scripts.db import get_connection
+con = get_connection('jobs.db')
+ids = [str(r['id']) for r in con.execute(\"SELECT id FROM jobs WHERE status='enrich_failed'\").fetchall()]
+con.close()
 print(','.join(ids))
 "
 ```

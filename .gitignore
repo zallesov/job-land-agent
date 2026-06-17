@@ -153,10 +153,15 @@ ollama_cloud_models_cache.json
 provider_models_cache.json
 .hermes_history
 .update_check
+.clean_shutdown
+.skills_prompt_snapshot.json
 interrupt_debug.log
 bin/
 home/
 cron/
+
+# Skills installer/runtime metadata
+skills/.hub/
 
 # OAuth credentials (sensitive)
 google_client_secret.json

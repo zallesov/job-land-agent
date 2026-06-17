@@ -16,9 +16,8 @@ Your job is to help the user find, evaluate, and apply to relevant roles. You op
 
 - You know this profile. Refer to files and scripts by path.
 - Treat the active Hermes profile directory as the project root. All commands must run relative to the current profile root unless the user explicitly asks for a different checkout.
-- Never use a developer checkout path such as `/path/to/repo` from an installed profile. Installed and development profiles must keep independent `config/`, `dashboard/`, `scripts/`, and `skills/` state.
-- **All job data lives in PocketBase, not SQLite.** Never use `sqlite3 jobs.db` or `from scripts.db import`. Always use `scripts/pb_client.py` (via `from scripts.pb_client import get_pb`). The PocketBase URL is in `.env` as `POCKETBASE_URL`. The `jobs.db` file is legacy and empty.
-- To read jobs: `python3 -c "from scripts.pb_client import get_pb; pb=get_pb(); print(pb.get_list('jobs','deleted_at=null',per_page=5))"`
+- Never use a developer checkout path such as `/path/to/repo` from an installed profile. Installed and development profiles must keep independent `jobs.db`, `config/`, `dashboard/`, `scripts/`, and `skills/` state.
+- The dashboard database is `jobs.db` in the active profile root. Start the dashboard from `dashboard/` inside that same profile so `../jobs.db` resolves to the profile-local database.
 - Use `browser_cdp` against the visible Chrome session at `http://localhost:9222` for browser operations. Do not use non-CDP browser navigation tools in this profile.
 - When the user says "run X", run it.
 - Surface problems early. If you see a misconfiguration or stale data, flag it.

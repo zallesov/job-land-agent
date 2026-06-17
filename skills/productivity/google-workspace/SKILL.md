@@ -330,8 +330,47 @@ All commands return JSON. Parse with `jq` or read directly. Key fields:
 ## Practical Notes From Use
 
 - The currently installed `setup.py` in this profile accepts `--check`, `--client-secret`, `--auth-url`, `--auth-code`, `--revoke`, and `--install-deps`. It does not accept the documented `--services` / `--format` flags here.
+- On this installed profile, the system Python has no `pip`, so `setup.py --auth-url` may fail while trying to auto-install Google dependencies. Durable workaround: create a profile-local venv under persistent HOME and run both `setup.py` and `google_api.py` through that interpreter.
+
+```bash
+uv venv "$HERMES_HOME/.venv-google"
+uv pip install --python "$HERMES_HOME/.venv-google/bin/python" \
+  google-api-python-client google-auth-oauthlib google-auth-httplib2
+"$HERMES_HOME/.venv-google/bin/python" "$HERMES_HOME/skills/productivity/google-workspace/scripts/setup.py" --auth-url
+```
+
+After that, keep using the same interpreter for auth checks and Workspace API calls:
+
+```bash
+"$HERMES_HOME/.venv-google/bin/python" "$HERMES_HOME/skills/productivity/google-workspace/scripts/setup.py" --check
+"$HERMES_HOME/.venv-google/bin/python" "$HERMES_HOME/skills/productivity/google-workspace/scripts/google_api.py" gmail search "is:unread" --max 5
+```
+
 - For interview workflows, use Gmail threads as the source of truth for process state. Calendar invites only show scheduling; the latest substantive recruiter email can override a stale calendar-derived status.
 - When enriching interview/contact records, do not add the candidate's own email address to contact-person lists.
+
+  uv pip install --python "$HERMES_HOME/.venv-google/bin/python" google-api-python-client google-auth-oauthlib google-auth-httplib2
+  ## Practical Notes From Use
+
+  - The currently installed `setup.py` in this profile accepts `--check`, `--client-secret`, `--auth-url`, `--auth-code`, `--revoke`, and `--install-deps`. It does not accept the documented `--services` / `--format` flags here.
+  - On this installed profile, the system Python has no `pip`, so `setup.py --auth-url` may fail while trying to auto-install Google dependencies. Durable workaround: create a profile-local venv under persistent HOME and run both `setup.py` and `google_api.py` through that interpreter.
+
+  ```bash
+  uv venv "$HERMES_HOME/.venv-google"
+  uv pip install --python "$HERMES_HOME/.venv-google/bin/python" \
+    google-api-python-client google-auth-oauthlib google-auth-httplib2
+  "$HERMES_HOME/.venv-google/bin/python" "$HERMES_HOME/skills/productivity/google-workspace/scripts/setup.py" --auth-url
+  ```
+
+  After that, keep using the same interpreter for auth checks and Workspace API calls:
+
+  ```bash
+  "$HERMES_HOME/.venv-google/bin/python" "$HERMES_HOME/skills/productivity/google-workspace/scripts/setup.py" --check
+  "$HERMES_HOME/.venv-google/bin/python" "$HERMES_HOME/skills/productivity/google-workspace/scripts/google_api.py" gmail search "is:unread" --max 5
+  ```
+
+  - For interview workflows, use Gmail threads as the source of truth for process state. Calendar invites only show scheduling; the latest substantive recruiter email can override a stale calendar-derived status.
+  - When enriching interview/contact records, do not add the candidate's own email address to contact-person lists.
 
 ## Revoking Access
 
