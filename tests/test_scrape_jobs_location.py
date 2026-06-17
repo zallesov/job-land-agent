@@ -62,7 +62,12 @@ def test_greenhouse_title_filter():
 
 
 def test_jobleads_accepts_location_dict():
-    """jobleads scrape_jobs uses country_code in URL."""
+    """jobleads scrape_jobs passes city/country through to collect_jobleads.
+
+    JobLeads has no URL-param location filter — _run_search drives the site's
+    country dropdown + location input directly, so the search dict carries
+    city/country fields rather than a pre-built URL.
+    """
     from scripts.providers.jobleads import scrape_jobs as mod
 
     raw = [{"title": "Platform Engineer", "company": "Corp", "url": "http://c.com",
@@ -75,7 +80,8 @@ def test_jobleads_accepts_location_dict():
         result = mod.scrape_jobs(BARCELONA, "http://localhost:9222")
 
     search_arg = mock_collect.call_args[0][1]
-    assert "location_country=ES" in search_arg["url"]
+    assert search_arg["city"] == "Barcelona"
+    assert search_arg["country"] == "Spain"
     assert len(result) == 1
 
 

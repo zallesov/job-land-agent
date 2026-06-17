@@ -180,10 +180,9 @@ def _scrape_filter_pages(page) -> list[dict]:
 def scrape_jobs(
     cdp_url: str,
     titles: list[str] | None = None,
-    db_path: str | None = None,
     _config: dict | None = None,
 ) -> list[ShallowJob]:
-    _ = titles, db_path, (_config if _config is not None else _load_config())
+    _ = titles, (_config if _config is not None else _load_config())
     try:
         return _scrape_jobs_with_playwright(cdp_url)
     except Exception as e:

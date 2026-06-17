@@ -2,11 +2,10 @@ from __future__ import annotations
 from pathlib import Path
 from .types import ShallowJob
 
-_DEFAULT_DB = str(Path(__file__).parent.parent.parent / "jobs.db")
 _SKIP_COMMENT = "Auto-filtered by job_filter before research"
 
 
-def ingest_jobs(jobs: list[ShallowJob], db_path: str = _DEFAULT_DB) -> list[str]:
+def ingest_jobs(jobs: list[ShallowJob]) -> list[str]:
     """Insert jobs into PocketBase. Returns IDs of non-skip jobs only."""
     if not jobs:
         return []

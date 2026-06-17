@@ -33,7 +33,7 @@ COUNTRY_TO_CONTINENT: dict[str, str] = {
 }
 
 
-def _parse_args(*args, titles=None, db_path=None, _config=None):
+def _parse_args(*args, titles=None, _config=None):
     if not args:
         raise TypeError("scrape_jobs() missing required positional argument: cdp_url")
     cfg = _config if _config is not None else _load_config()
@@ -47,7 +47,7 @@ def _parse_args(*args, titles=None, db_path=None, _config=None):
         cdp_url = args[0]
         locations = cfg.get("locations", [])
         explicit_location = False
-    return cdp_url, cfg, locations, titles, db_path, explicit_location
+    return cdp_url, cfg, locations, titles, explicit_location
 
 
 def _load_config() -> dict:
@@ -267,11 +267,10 @@ def collect_wellfound(page, country: str) -> list[dict]:
 def scrape_jobs(
     *args,
     titles: list[str] | None = None,
-    db_path: str | None = None,
     _config: dict | None = None,
 ) -> list[ShallowJob]:
-    cdp_url, cfg, locations, titles, db_path, explicit_location = _parse_args(
-        *args, titles=titles, db_path=db_path, _config=_config
+    cdp_url, cfg, locations, titles, explicit_location = _parse_args(
+        *args, titles=titles, _config=_config
     )
     work_style: str = cfg.get("work_style", {}).get("preferred", "remote")
     remote = work_style == "remote"

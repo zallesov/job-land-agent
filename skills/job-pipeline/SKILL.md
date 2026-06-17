@@ -13,6 +13,18 @@ description: Run the job scraping pipeline for one or all providers. Knows the f
 
 ---
 
+## PocketBase-first job data
+
+The job pipeline is now PocketBase-only.
+
+- Do not use `jobs.db` for job data, even as a temporary default.
+- Do not accept or thread `db_path` through pipeline helpers or wrapper CLIs.
+- Use `scripts.pb_client.get_pb()` for job, assessment, company, command, and pipeline-run reads/writes.
+- When a helper needs a list of records, use `get_list()` and filter in Python if the query would require joins, date windows, or length checks.
+- When converting legacy code, remove the SQLite plumbing first, then replace the read/write calls.
+
+See `references/pocketbase-only-pipeline.md` for the migration checklist and common helper patterns.
+
 ## CRITICAL: Chrome Must Be VISIBLE
 
 **The user watches the Chrome window.** Do NOT use `ctx.new_page()` without immediately calling `page.bring_to_front()` — the tab must appear and be focused in the user's Chrome window so they can watch the work happen.

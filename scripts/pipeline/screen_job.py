@@ -14,7 +14,6 @@ from .types import HermesResult
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_CV_PATH = PROJECT_ROOT / "config" / "cv.md"
-_DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 hermes_call = None
 
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -183,7 +182,7 @@ def _fixture_assessment_for_job_id(job_id: Any) -> dict | None:
     }
 
 
-def screen_job(job_id: Any, db_path: str = _DEFAULT_DB) -> HermesResult:
+def screen_job(job_id: Any) -> HermesResult:
     from scripts.pb_client import get_pb
     pb = get_pb()
 

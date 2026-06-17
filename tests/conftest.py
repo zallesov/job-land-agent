@@ -5,22 +5,16 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from scripts.db import create_db, get_connection
+from tests.fake_pb import FakePBClient
 
 
 @pytest.fixture
-def db_path(tmp_path):
-    p = str(tmp_path / "test.db")
-    create_db(p)
-    return p
-
-
-@pytest.fixture
-def con(db_path):
-    c = get_connection(db_path)
-    yield c
-    c.close()
+def pb(monkeypatch):
+    """In-memory PocketBase double. Never touches the network or real PocketBase."""
+    fake = FakePBClient()
+    monkeypatch.setattr("scripts.pb_client.get_pb", lambda: fake)
+    return fake
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "e2e: end-to-end test requiring live Chrome + Hermes")
+    config.addinivalue_line("markers", "e2e: end-to-end test requiring live Chrome + Hermes + a local PocketBase instance")

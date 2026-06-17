@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 CSV_PATH = PROJECT_ROOT / "tmp" / "filtered_dev.csv"
 
 
-def scrape_jobs(cdp_url: str, titles: list[str] | None = None, db_path: str | None = None) -> list[ShallowJob]:
+def scrape_jobs(cdp_url: str, titles: list[str] | None = None) -> list[ShallowJob]:
     """Read jobs from a pre-filtered CSV file instead of scraping a live provider."""
     if not CSV_PATH.exists():
         print(f"[csvfeed] CSV not found: {CSV_PATH}", file=sys.stderr, flush=True)

@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 GREENHOUSE_BASE = "https://my.greenhouse.io/jobs"
 
 
-def _parse_args(*args, titles=None, db_path=None, _config=None):
+def _parse_args(*args, titles=None, _config=None):
     if not args:
         raise TypeError("scrape_jobs() missing required positional argument: cdp_url")
     cfg = _config if _config is not None else _load_config()
@@ -26,7 +26,7 @@ def _parse_args(*args, titles=None, db_path=None, _config=None):
     else:
         cdp_url = args[0]
         locations = cfg.get("locations", [])
-    return cdp_url, cfg, locations, titles, db_path
+    return cdp_url, cfg, locations, titles
 
 
 def _load_config() -> dict:
@@ -223,11 +223,10 @@ def collect_greenhouse(page, search: dict, skip_setup: bool = False) -> list[dic
 def scrape_jobs(
     *args,
     titles: list[str] | None = None,
-    db_path: str | None = None,
     _config: dict | None = None,
 ) -> list[ShallowJob]:
-    cdp_url, cfg, locations, titles, db_path = _parse_args(
-        *args, titles=titles, db_path=db_path, _config=_config
+    cdp_url, cfg, locations, titles = _parse_args(
+        *args, titles=titles, _config=_config
     )
     if not locations:
         return []

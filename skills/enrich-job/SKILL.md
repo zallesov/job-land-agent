@@ -44,20 +44,23 @@ python3 scripts/enrich_jobs_batch.py --job-ids 42,43,44
 python3 scripts/enrich_jobs_batch.py --job-ids 42 43 44
 ```
 
-To enrich all `enrich_failed` jobs, first query the IDs:
+To enrich all failed jobs, first query the IDs from PocketBase:
 
 ```bash
 python3 -c "
 import sys; sys.path.insert(0, '.')
-from scripts.db import get_connection
-con = get_connection('jobs.db')
-ids = [str(r['id']) for r in con.execute(\"SELECT id FROM jobs WHERE status='enrich_failed'\").fetchall()]
-con.close()
+from scripts.pb_client import get_pb
+pb = get_pb()
+ids = [str(j['id']) for j in pb.get_list('jobs', filter=\"pipeline_status='enrich_failed'\", sort='-created_at')]
 print(','.join(ids))
 "
 ```
 
 Then pass the output to `--job-ids`.
+
+## PocketBase-only note
+
+Do not reintroduce `db_path` into the enrich helpers or wrappers. The batch and single-job enrich flows should talk to PocketBase directly for reads and writes.
 
 ## Failure modes
 

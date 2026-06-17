@@ -4,12 +4,11 @@ from pathlib import Path
 from .types import ShallowJob
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_DEFAULT_DB = str(_PROJECT_ROOT / "jobs.db")
 
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 
-def dedup_jobs(jobs: list[ShallowJob], db_path: str = _DEFAULT_DB) -> list[ShallowJob]:
+def dedup_jobs(jobs: list[ShallowJob]) -> list[ShallowJob]:
     if not jobs:
         return []
 

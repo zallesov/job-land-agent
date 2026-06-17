@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -56,6 +57,15 @@ class PBClient:
         self._password = os.environ.get("POCKETBASE_ADMIN_PASSWORD", "")
         self._token: str | None = None
         self._token_exp: float = 0
+        self._ssl_context = self._make_ssl_context()
+
+    @staticmethod
+    def _make_ssl_context() -> ssl.SSLContext | None:
+        try:
+            import certifi  # type: ignore
+            return ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            return None
 
     def _ensure_auth(self) -> str:
         if self._token and time.time() < self._token_exp:
@@ -66,7 +76,7 @@ class PBClient:
             data=data,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=15, context=self._ssl_context) as r:
             body = json.loads(r.read())
         self._token = body["token"]
         self._token_exp = time.time() + 55 * 60
@@ -83,7 +93,7 @@ class PBClient:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, headers=self._headers(), method=method)
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=30, context=self._ssl_context) as r:
                 text = r.read()
                 return json.loads(text) if text else {}
         except urllib.error.HTTPError as e:

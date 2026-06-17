@@ -47,7 +47,7 @@ def parse_salary(val):
 ## Per-provider: csvfeed scrape_jobs.py structure
 
 ```python
-def scrape_jobs(cdp_url, titles=None, db_path=None):
+def scrape_jobs(cdp_url, titles=None):
     jobs = []
     with open(CSV_PATH, 'r', newline='') as f:
         for row in csv.DictReader(f):

@@ -6,13 +6,11 @@ from pathlib import Path
 from .enrich_job import enrich_job
 from .types import HermesResult
 
-_DEFAULT_DB = str(Path(__file__).parent.parent.parent / "jobs.db")
 _DEFAULT_CDP = "http://localhost:9222"
 
 
 def enrich_jobs_batch(
     job_ids: list[int],
-    db_path: str = _DEFAULT_DB,
     cdp_url: str = _DEFAULT_CDP,
     max_workers: int = 5,
 ) -> tuple[list[int], list[tuple[int, str]]]:
@@ -23,7 +21,7 @@ def enrich_jobs_batch(
     futures = {}
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         for job_id in job_ids:
-            fut = pool.submit(enrich_job, job_id, db_path, cdp_url)
+            fut = pool.submit(enrich_job, job_id, cdp_url)
             futures[fut] = job_id
 
         total = len(futures)

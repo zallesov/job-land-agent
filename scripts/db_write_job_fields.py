@@ -5,7 +5,7 @@ Update job fields from JSON (stdin) after URL scrape.
 Usage:
   echo '<json>' | python3 db_write_job_fields.py --job-id 123
 
---db is accepted but ignored (PocketBase config comes from .env).
+PocketBase config comes from .env.
 """
 import argparse
 import json
@@ -23,7 +23,6 @@ UPDATABLE_FIELDS = [
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", help="(ignored — PocketBase is used)")
     parser.add_argument("--job-id", required=True, dest="job_id")
     args = parser.parse_args()
 

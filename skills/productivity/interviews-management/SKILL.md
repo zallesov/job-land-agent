@@ -19,6 +19,7 @@ Use this skill to update one interview-process record per company/process.
 - `references/interview-calendar-mapping.md` — local review-table pattern for mapping every interview date to its matching calendar event URL and title before any DB write.
 - `references/interview-calendar-ui.md` — calendar URL-backed interview dates, dashboard editing behavior, and comments textarea conventions.
 - `references/interview-dates-with-urls.md` — date/url schema for calendar-backed interview entries and dashboard expectations.
+- `references/frontend-state-mapping.md` — exact PocketBase values vs dashboard labels, plus the stale-page verification note.
 - `references/dashboard-cache-freshness.md` — when the API is correct but `/interviews` shows stale dates, plus the page-cache fix and verification.
 - `references/pocketbase-dry-run-and-write.md` — PocketBase-era dry-run/write workflow, tie-breaking, and write-set shape.
 - `references/calendar-dry-run-pitfalls.md` — dry-run guardrails for duplicate calendar rows, non-interview meetings, and Gmail-vs-calendar source priority.
@@ -138,7 +139,7 @@ If the data is explicit and unambiguous, you may proceed without asking. If the 
 - Use the process state, not the meeting platform.
 - Match the dashboard field values exactly so the frontend selector stays in sync:
   - `status`: `applied`, `in_process`, `rejected`, `offer`
-  - `interview_status`: `scheduled`, `awaiting_response`
+  - `interview_status`: `scheduled`, `awaiting_response`, `rejected`
 - The frontend shows friendly labels (Applied, In Process, Awaiting Feedback, etc.), but the stored values should stay machine-readable and lowercase.
 - If a source uses a different phrase, map it to the nearest frontend-backed value instead of inventing a new state.
 

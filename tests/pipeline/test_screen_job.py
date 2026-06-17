@@ -1,15 +1,13 @@
 from unittest.mock import patch
 from scripts.pipeline.types import HermesResult
-from scripts.db import get_connection
 
 
-def _insert_job(con, status="enriched", description="We need a senior Python engineer..."):
-    jid = con.execute(
-        "INSERT INTO jobs (url, provider, status, title, description) VALUES (?,?,?,?,?)",
-        ("http://x.com", "gh", status, "Senior Python Engineer", description)
-    ).lastrowid
-    con.commit()
-    return jid
+def _insert_job(pb, status="enriched", description="We need a senior Python engineer..."):
+    rec = pb.create("jobs", {
+        "url": "http://x.com", "provider": "gh", "status": status,
+        "title": "Senior Python Engineer", "description": description,
+    })
+    return rec["id"]
 
 
 STRONG_APPLY_RESULT = HermesResult(
@@ -44,15 +42,15 @@ SKIP_RESULT = HermesResult(
 
 
 @patch("scripts.pipeline.screen_job.hermes_call")
-def test_strong_apply_sets_screened_and_writes_assessment(mock_hermes, db_path, con):
+def test_strong_apply_sets_screened_and_writes_assessment(mock_hermes, pb):
     mock_hermes.return_value = STRONG_APPLY_RESULT
-    jid = _insert_job(con)
+    jid = _insert_job(pb)
     from scripts.pipeline.screen_job import screen_job
-    result = screen_job(jid, db_path=db_path)
+    result = screen_job(jid)
     assert result.success is True
-    row = con.execute("SELECT status FROM jobs WHERE id = ?", (jid,)).fetchone()
+    row = pb.get("jobs", jid)
     assert row["status"] == "screened"
-    assessment = con.execute("SELECT * FROM job_assessments WHERE job_id = ?", (jid,)).fetchone()
+    assessment = pb.get_one("job_assessments", f"job_id='{jid}'")
     assert assessment is not None
     assert assessment["apply_verdict"] == "Strong Apply"
     assert assessment["relevance_score"] == 90
@@ -65,36 +63,36 @@ def test_strong_apply_sets_screened_and_writes_assessment(mock_hermes, db_path, 
 
 
 @patch("scripts.pipeline.screen_job.hermes_call")
-def test_skip_verdict_still_sets_screened_status(mock_hermes, db_path, con):
+def test_skip_verdict_still_sets_screened_status(mock_hermes, pb):
     mock_hermes.return_value = SKIP_RESULT
-    jid = _insert_job(con)
+    jid = _insert_job(pb)
     from scripts.pipeline.screen_job import screen_job
-    screen_job(jid, db_path=db_path)
-    row = con.execute("SELECT status FROM jobs WHERE id = ?", (jid,)).fetchone()
+    screen_job(jid)
+    row = pb.get("jobs", jid)
     assert row["status"] == "screened"
-    assessment = con.execute("SELECT apply_verdict FROM job_assessments WHERE job_id = ?", (jid,)).fetchone()
+    assessment = pb.get_one("job_assessments", f"job_id='{jid}'")
     assert assessment["apply_verdict"] == "Skip"
 
 
 @patch("scripts.pipeline.screen_job.hermes_call")
-def test_hermes_failure_sets_screen_failed(mock_hermes, db_path, con):
+def test_hermes_failure_sets_screen_failed(mock_hermes, pb):
     mock_hermes.return_value = HermesResult(
         success=False, data={}, error="timeout", raw_output="",
     )
-    jid = _insert_job(con)
+    jid = _insert_job(pb)
     from scripts.pipeline.screen_job import screen_job
-    screen_job(jid, db_path=db_path)
-    row = con.execute("SELECT status, comment FROM jobs WHERE id = ?", (jid,)).fetchone()
+    screen_job(jid)
+    row = pb.get("jobs", jid)
     assert row["status"] == "screen_failed"
     assert row["comment"] == "timeout"
 
 
 @patch("scripts.pipeline.screen_job.hermes_call")
-def test_upsert_does_not_duplicate_assessment(mock_hermes, db_path, con):
+def test_upsert_does_not_duplicate_assessment(mock_hermes, pb):
     mock_hermes.return_value = STRONG_APPLY_RESULT
-    jid = _insert_job(con)
+    jid = _insert_job(pb)
     from scripts.pipeline.screen_job import screen_job
-    screen_job(jid, db_path=db_path)
-    screen_job(jid, db_path=db_path)
-    count = con.execute("SELECT COUNT(*) FROM job_assessments WHERE job_id = ?", (jid,)).fetchone()[0]
+    screen_job(jid)
+    screen_job(jid)
+    count = sum(1 for r in pb.collections.get("job_assessments", {}).values() if r["job_id"] == jid)
     assert count == 1

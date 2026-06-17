@@ -13,7 +13,6 @@ Options:
   --provider <name>   Provider: greenhouse | jobleads | wellfound | sprout | hirify
   --titles <str>      Comma-separated title search terms (optional; overrides config)
   --cdp-url <url>     CDP endpoint (default: http://localhost:9222)
-  --db <path>         DB path (default: jobs.db in project root)
 """
 from __future__ import annotations
 
@@ -31,7 +30,6 @@ from scripts.pipeline.screen_job import screen_job
 from scripts.pipeline.notify import send_daily_digest
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_DB = str(PROJECT_ROOT / "jobs.db")
 DEFAULT_CDP = "http://localhost:9222"
 PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout", "hirify", "csvfeed"}
 
@@ -39,7 +37,6 @@ PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout", "hirify", "csvfeed
 def run(
     provider: str,
     cdp_url: str = DEFAULT_CDP,
-    db_path: str = DEFAULT_DB,
     titles: list[str] | None = None,
     location: dict | None = None,
     _check_auth=None,
@@ -54,9 +51,9 @@ def run(
 
     try:
         if location is not None:
-            raw_jobs = _scrape_jobs(location, cdp_url, titles=titles, db_path=db_path)
+            raw_jobs = _scrape_jobs(location, cdp_url, titles=titles)
         else:
-            raw_jobs = _scrape_jobs(cdp_url, titles=titles, db_path=db_path)
+            raw_jobs = _scrape_jobs(cdp_url, titles=titles)
     except Exception as e:
         from scripts.telegram_notify import pipeline_failure
         pipeline_failure(provider, "scrape", str(e), "")
@@ -64,17 +61,17 @@ def run(
 
     print(f"[pipeline] {provider}: scraped {len(raw_jobs)} jobs", flush=True)
 
-    new_jobs = dedup_jobs(raw_jobs, db_path=db_path)
+    new_jobs = dedup_jobs(raw_jobs)
     print(f"[pipeline] {len(new_jobs)} new after dedup", flush=True)
 
-    job_ids = ingest_jobs(new_jobs, db_path=db_path)
+    job_ids = ingest_jobs(new_jobs)
     print(f"[pipeline] ingested {len(job_ids)} jobs", flush=True)
 
     enrich_failures: list[tuple[int, str]] = []
     enriched_ids: list[int] = []
     for i, job_id in enumerate(job_ids, 1):
         print(f"[enrich] {i}/{len(job_ids)} job_id={job_id}", flush=True)
-        result = enrich_job(job_id, db_path=db_path)
+        result = enrich_job(job_id)
         if result.success:
             title = (result.data.get("title") or "")[:60]
             print(f"[enrich] OK  job_id={job_id}  title={title!r}", flush=True)
@@ -87,7 +84,7 @@ def run(
     screen_failures: list[tuple[int, str]] = []
     for i, job_id in enumerate(enriched_ids, 1):
         print(f"[screen] {i}/{len(enriched_ids)} job_id={job_id}", flush=True)
-        result = screen_job(job_id, db_path=db_path)
+        result = screen_job(job_id)
         if not result.success:
             screen_failures.append((job_id, result.error or "unknown"))
 
@@ -106,7 +103,6 @@ def main() -> int:
     parser.add_argument("--titles", default=None,
                         help="Comma-separated job title search terms")
     parser.add_argument("--cdp-url", default=DEFAULT_CDP)
-    parser.add_argument("--db", default=DEFAULT_DB)
     args = parser.parse_args()
 
     titles = [t.strip() for t in args.titles.split(",")] if args.titles else None
@@ -114,7 +110,6 @@ def main() -> int:
     run(
         provider=args.provider,
         cdp_url=args.cdp_url,
-        db_path=args.db,
         titles=titles,
     )
     return 0

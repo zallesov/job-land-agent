@@ -14,10 +14,10 @@ def _job(company="Acme", title="SWE", url="http://x.com"):
     )
 
 
-def test_happy_path(db_path):
+def test_happy_path(pb):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
-    jid = 1
+    jid = "fake000000000001"
 
     with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]) as mock_dedup, \
          patch("scripts.scraping_pipeline.ingest_jobs", return_value=[jid]) as mock_ingest, \
@@ -34,19 +34,19 @@ def test_happy_path(db_path):
         )
 
         from scripts.scraping_pipeline import run
-        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+        run(provider="greenhouse", cdp_url=CDP,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
     mock_check_auth.assert_called_once_with(CDP)
-    mock_scrape.assert_called_once_with(CDP, titles=None, db_path=db_path)
+    mock_scrape.assert_called_once_with(CDP, titles=None)
     mock_dedup.assert_called_once()
     mock_ingest.assert_called_once()
-    mock_enrich.assert_called_once_with(jid, db_path=db_path)
-    mock_screen.assert_called_once_with(jid, db_path=db_path)
+    mock_enrich.assert_called_once_with(jid)
+    mock_screen.assert_called_once_with(jid)
     mock_notify.assert_called_once_with(enrich_failures=[], screen_failures=[])
 
 
-def test_auth_error_stops_pipeline(db_path):
+def test_auth_error_stops_pipeline(pb):
     from scripts.providers.greenhouse.check_auth import AuthError
     mock_check_auth = MagicMock(side_effect=AuthError("timed out"))
     mock_scrape = MagicMock()
@@ -54,15 +54,15 @@ def test_auth_error_stops_pipeline(db_path):
     import pytest
     from scripts.scraping_pipeline import run
     with pytest.raises(AuthError):
-        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+        run(provider="greenhouse", cdp_url=CDP,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
     mock_scrape.assert_not_called()
 
 
-def test_enrich_failure_skips_screen_for_that_job(db_path):
+def test_enrich_failure_skips_screen_for_that_job(pb):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
-    jid = 2
+    jid = "fake000000000002"
 
     with patch("scripts.scraping_pipeline.dedup_jobs", return_value=[_job()]), \
          patch("scripts.scraping_pipeline.ingest_jobs", return_value=[jid]), \
@@ -75,7 +75,7 @@ def test_enrich_failure_skips_screen_for_that_job(db_path):
         )
 
         from scripts.scraping_pipeline import run
-        run(provider="greenhouse", cdp_url=CDP, db_path=db_path,
+        run(provider="greenhouse", cdp_url=CDP,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape)
 
     mock_screen.assert_not_called()
@@ -83,7 +83,7 @@ def test_enrich_failure_skips_screen_for_that_job(db_path):
     assert (jid, "timeout") in failures
 
 
-def test_titles_passed_to_scrape_jobs(db_path):
+def test_titles_passed_to_scrape_jobs(pb):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[])
 
@@ -94,12 +94,12 @@ def test_titles_passed_to_scrape_jobs(db_path):
         run(
             provider="greenhouse",
             titles=["AI Engineer", "Software Engineer"],
-            cdp_url=CDP, db_path=db_path,
+            cdp_url=CDP,
             _check_auth=mock_check_auth, _scrape_jobs=mock_scrape,
         )
 
     mock_scrape.assert_called_once_with(
-        CDP, titles=["AI Engineer", "Software Engineer"], db_path=db_path
+        CDP, titles=["AI Engineer", "Software Engineer"]
     )
 
 

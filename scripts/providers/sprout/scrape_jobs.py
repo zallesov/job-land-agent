@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+from scripts.pb_client import get_pb
 from scripts.pipeline.types import ShallowJob
 from scripts.providers._shared.job_filter import is_relevant
 
@@ -18,7 +18,7 @@ DEFAULT_TITLES = [
 ]
 
 
-def _parse_args(*args, titles=None, db_path=None, _config=None):
+def _parse_args(*args, titles=None, _config=None):
     if not args:
         raise TypeError("scrape_jobs() missing required positional argument: cdp_url")
     cfg = _config if _config is not None else _load_config()
@@ -32,7 +32,7 @@ def _parse_args(*args, titles=None, db_path=None, _config=None):
         cdp_url = args[0]
         locations = cfg.get("locations", [])
         explicit_location = False
-    return cdp_url, cfg, locations, titles, db_path, explicit_location
+    return cdp_url, cfg, locations, titles, explicit_location
 
 
 def _load_config() -> dict:
@@ -43,18 +43,6 @@ def _load_config() -> dict:
     except Exception:
         return {}
 
-
-def _known_dedup_keys(db_path: str) -> set[str]:
-    try:
-        con = sqlite3.connect(db_path)
-        try:
-            return {row[0] for row in con.execute(
-                "SELECT dedup_key FROM jobs WHERE dedup_key IS NOT NULL"
-            ).fetchall()}
-        finally:
-            con.close()
-    except Exception:
-        return set()
 
 
 def search_jobs(page, title: str, location: str) -> bool:
@@ -223,13 +211,9 @@ def click_card_and_get_job_url(page, card_index: int) -> str | None:
         return None
 
 
-def collect_sprout(page, titles: list[str], location: str, country: str,
-                   db_path: str | None = None) -> list[dict]:
+def collect_sprout(page, titles: list[str], location: str, country: str) -> list[dict]:
     all_jobs: list[dict] = []
-
-    known_keys = _known_dedup_keys(db_path) if db_path else set()
-    if known_keys:
-        print(f"  [dedup] {len(known_keys)} jobs already in DB", flush=True)
+    pb = get_pb()
 
     context = page.context
     for p in list(context.pages):
@@ -248,6 +232,9 @@ def collect_sprout(page, titles: list[str], location: str, country: str,
 
         if not summaries:
             continue
+
+        db_keys = [f"{summary['company']}::{summary['title']}" for summary in summaries]
+        known_keys = pb.get_dedup_keys(db_keys) if db_keys else set()
 
         for i, summary in enumerate(summaries):
             dup_key = f"{summary['company']}|{summary['title']}"
@@ -281,11 +268,10 @@ def collect_sprout(page, titles: list[str], location: str, country: str,
 def scrape_jobs(
     *args,
     titles: list[str] | None = None,
-    db_path: str | None = None,
     _config: dict | None = None,
 ) -> list[ShallowJob]:
-    cdp_url, cfg, locations, titles, db_path, explicit_location = _parse_args(
-        *args, titles=titles, db_path=db_path, _config=_config
+    cdp_url, cfg, locations, titles, explicit_location = _parse_args(
+        *args, titles=titles, _config=_config
     )
     if not locations:
         return []
@@ -308,7 +294,6 @@ def scrape_jobs(
                     titles=search_terms,
                     location=location["city"],
                     country=location["country"],
-                    db_path=db_path,
                 )
                 for r in rows:
                     key = f"{r['company']}::{r['title']}"

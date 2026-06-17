@@ -6,7 +6,8 @@ from typing import Any
 
 from .types import HermesResult
 
-_DEFAULT_DB = str(Path(__file__).parent.parent.parent / "jobs.db")
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DEFAULT_CV_PATH = PROJECT_ROOT / "config" / "cv.md"
 _DEFAULT_CDP = "http://localhost:9222"
 hermes_call = None
 
@@ -64,7 +65,6 @@ def _extract_page(page) -> dict:
 
 def enrich_job(
     job_id: Any,
-    db_path: str = _DEFAULT_DB,
     cdp_url: str = _DEFAULT_CDP,
 ) -> HermesResult:
     from scripts.pb_client import get_pb

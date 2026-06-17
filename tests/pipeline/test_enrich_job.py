@@ -1,18 +1,14 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from scripts.pipeline.types import HermesResult
-from scripts.db import get_connection
 
 
-def _insert_job(con, url="http://x.com"):
-    jid = con.execute(
-        "INSERT INTO jobs (url, provider, status) VALUES (?, 'gh', 'listed')", (url,)
-    ).lastrowid
-    con.commit()
-    return jid
+def _insert_job(pb, url="http://x.com"):
+    rec = pb.create("jobs", {"url": url, "provider": "gh", "status": "listed"})
+    return rec["id"]
 
 
 @patch("scripts.pipeline.enrich_job.hermes_call")
-def test_success_updates_db(mock_hermes, db_path, con):
+def test_success_updates_db(mock_hermes, pb):
     mock_hermes.return_value = HermesResult(
         success=True,
         data={"status": "success", "title": "SWE", "description": "Build things.",
@@ -20,11 +16,11 @@ def test_success_updates_db(mock_hermes, db_path, con):
               "date_posted": "2026-05-01"},
         error=None, raw_output="",
     )
-    jid = _insert_job(con)
+    jid = _insert_job(pb)
     from scripts.pipeline.enrich_job import enrich_job
-    result = enrich_job(jid, db_path=db_path)
+    result = enrich_job(jid)
     assert result.success is True
-    row = con.execute("SELECT * FROM jobs WHERE id = ?", (jid,)).fetchone()
+    row = pb.get("jobs", jid)
     assert row["status"] == "new"
     assert row["title"] == "SWE"
     assert row["description"] == "Build things."
@@ -32,27 +28,27 @@ def test_success_updates_db(mock_hermes, db_path, con):
 
 
 @patch("scripts.pipeline.enrich_job.hermes_call")
-def test_failure_sets_enrich_failed(mock_hermes, db_path, con):
+def test_failure_sets_enrich_failed(mock_hermes, pb):
     mock_hermes.return_value = HermesResult(
         success=False, data={}, error="login wall", raw_output="",
     )
-    jid = _insert_job(con)
+    jid = _insert_job(pb)
     from scripts.pipeline.enrich_job import enrich_job
-    result = enrich_job(jid, db_path=db_path)
+    result = enrich_job(jid)
     assert result.success is False
-    row = con.execute("SELECT status, comment FROM jobs WHERE id = ?", (jid,)).fetchone()
+    row = pb.get("jobs", jid)
     assert row["status"] == "enrich_failed"
     assert row["comment"] == "login wall"
 
 
 @patch("scripts.pipeline.enrich_job.hermes_call")
-def test_hermes_context_includes_url_and_cv(mock_hermes, db_path, con):
+def test_hermes_context_includes_url_and_cv(mock_hermes, pb):
     mock_hermes.return_value = HermesResult(
         success=False, data={}, error="x", raw_output=""
     )
-    jid = _insert_job(con, url="http://job.com")
+    jid = _insert_job(pb, url="http://job.com")
     from scripts.pipeline.enrich_job import enrich_job
-    enrich_job(jid, db_path=db_path)
+    enrich_job(jid)
     call_args = mock_hermes.call_args
     assert call_args[0][0] == "enrich-job"
     ctx = call_args[0][1]

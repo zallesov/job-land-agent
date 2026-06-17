@@ -49,5 +49,4 @@ languages: ""
 # Free text. Example: "€120k–150k", "$150k+", "140–180K EUR"
 desired_salary: ""
 
-# SQLite database path (relative to repo root)
-db_path: "jobs.db"
+

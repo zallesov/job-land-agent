@@ -6,7 +6,7 @@ Usage:
   echo '<json>' | python3 db_write_research.py --job-id 123
   python3 db_write_research.py --job-id 123 --command-id 456 < result.json
 
---db is accepted but ignored (PocketBase config comes from .env).
+PocketBase config comes from .env.
 """
 import argparse
 import json
@@ -20,7 +20,6 @@ from scripts.pb_client import get_pb
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", help="(ignored — PocketBase is used)")
     parser.add_argument("--job-id", required=True, dest="job_id")
     parser.add_argument("--command-id", dest="command_id")
     args = parser.parse_args()

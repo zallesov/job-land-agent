@@ -6,12 +6,9 @@ from pathlib import Path
 from .screen_job import screen_job
 from .types import HermesResult
 
-_DEFAULT_DB = str(Path(__file__).parent.parent.parent / "jobs.db")
-
 
 def screen_jobs_batch(
     job_ids: list[int],
-    db_path: str = _DEFAULT_DB,
     max_workers: int = 5,
 ) -> tuple[list[int], list[tuple[int, str]]]:
     """Screen a list of jobs in parallel. Returns (ok_ids, failures)."""
@@ -21,7 +18,7 @@ def screen_jobs_batch(
     futures = {}
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         for job_id in job_ids:
-            fut = pool.submit(screen_job, job_id, db_path)
+            fut = pool.submit(screen_job, job_id)
             futures[fut] = job_id
 
         total = len(futures)
