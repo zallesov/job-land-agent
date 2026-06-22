@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
+import PocketBase from "pocketbase";
 import { CommandButton } from "./CommandButton";
 import { PROVIDER_COLORS } from "./JobList";
+import { PB_URL } from "@/lib/pb";
 
 const USER_STATUSES = ["interesting","not_interesting","applied","rejected","interviewing","offer"];
 
@@ -127,6 +129,34 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
   };
 
   useEffect(() => { load(); }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: keep this job's detail view live without manual refresh.
+  useEffect(() => {
+    const pb = new PocketBase(PB_URL);
+
+    pb.collection('jobs').subscribe(jobId, () => load()).catch(() => {});
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pb.collection('job_assessments').subscribe('*', (e: any) => {
+      if (e.record['job_id'] === jobId) load();
+    }).catch(() => {});
+
+    pb.collection('company_research').subscribe('*', () => load()).catch(() => {});
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pb.collection('agent_commands').subscribe('*', (e: any) => {
+      const payload = e.record['payload_json'];
+      const p = typeof payload === 'string' ? (() => { try { return JSON.parse(payload); } catch { return null; } })() : payload;
+      if (p?.job_id != null && String(p.job_id).padStart(15, '0') === jobId) load();
+    }).catch(() => {});
+
+    return () => {
+      pb.collection('jobs').unsubscribe(jobId).catch(() => {});
+      pb.collection('job_assessments').unsubscribe('*').catch(() => {});
+      pb.collection('company_research').unsubscribe('*').catch(() => {});
+      pb.collection('agent_commands').unsubscribe('*').catch(() => {});
+    };
+  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return (
     <div className="flex items-center justify-center h-32">

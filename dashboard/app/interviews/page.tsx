@@ -1,16 +1,12 @@
-import { unstable_noStore as noStore } from "next/cache";
-import { listInterviews } from "@/lib/db";
 import { InterviewsClient } from "./InterviewsClient";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-export default async function InterviewsPage() {
-  noStore();
-  const interviews = await listInterviews();
+// Interviews are fetched client-side (via /api/interviews) and kept live via
+// PocketBase realtime subscriptions — nothing dynamic is rendered
+// server-side, so there's no server/client markup to keep in sync.
+export default function InterviewsPage() {
   return (
     <div className="flex flex-col" style={{ height: "calc(100vh - 2.5rem)", background: "var(--bg)", color: "var(--text-1)" }}>
-      <InterviewsClient interviews={interviews} />
+      <InterviewsClient />
     </div>
   );
 }

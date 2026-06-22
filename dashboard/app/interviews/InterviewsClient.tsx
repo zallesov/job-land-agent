@@ -696,11 +696,22 @@ function SelectBadgeCell({ value, options, colorMap, onSave }: {
 
 // ── main component ─────────────────────────────────────────────────────────────
 
-export function InterviewsClient({ interviews: initial }: { interviews: Interview[] }) {
-  const [rows, setRows] = useState<Interview[]>(initial);
+export function InterviewsClient() {
+  const [rows, setRows] = useState<Interview[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<string>("");
+
+  // Initial fetch — client-side, so nothing dynamic is ever server-rendered
+  // (avoids the SSR/client hydration mismatch from timezone-dependent date
+  // formatting: server and browser can disagree on local day/weekday/hour).
+  useEffect(() => {
+    fetch("/api/interviews")
+      .then(r => r.json())
+      .then(setRows)
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     const pb = new PocketBase(PB_URL);
@@ -716,7 +727,9 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
       return out as Interview;
     }
     pb.collection('interviews').subscribe('*', (e) => {
-      if (e.action === 'create') setRows(prev => [norm(e.record), ...prev]);
+      // 'create' events echo back to the tab that made the POST too (handleNew already
+      // inserted it locally), so skip if this id is already in state to avoid duplicates.
+      if (e.action === 'create') setRows(prev => prev.some(r => r.id === e.record.id) ? prev : [norm(e.record), ...prev]);
       else if (e.action === 'update') setRows(prev => prev.map(r => r.id === e.record.id ? norm({ ...r, ...e.record }) : r));
       else if (e.action === 'delete') setRows(prev => prev.filter(r => r.id !== e.record.id));
     }).catch(() => {});
@@ -802,7 +815,14 @@ export function InterviewsClient({ interviews: initial }: { interviews: Intervie
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={COLS.length} className="text-center py-12 text-xs font-data animate-pulse" style={{ color: "var(--text-3)" }}>
+                  loading…
+                </td>
+              </tr>
+            )}
+            {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={COLS.length} className="text-center py-12 text-sm" style={{ color: "var(--text-3)" }}>
                   No entries. Click <strong>+ New</strong> to add one.

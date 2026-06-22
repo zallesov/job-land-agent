@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PocketBase from "pocketbase";
 import { JobDetail } from "./JobDetail";
 import { updateJobAction } from "../actions";
@@ -78,16 +78,15 @@ function sortJobs(jobs: any[], sortBy: "newest" | "score" | "status"): any[] {
 }
 
 export function JobListClient({
-  jobs: initialJobs, addJobAction, initialJobId,
+  addJobAction, initialJobId,
 }: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  jobs: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addJobAction: (fd: FormData) => Promise<any>;
   initialJobId?: string | null;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [jobs, setJobs] = useState<any[]>(initialJobs);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(initialJobId ?? null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [addUrl, setAddUrl] = useState("");
@@ -96,7 +95,17 @@ export function JobListClient({
   const [sortBy, setSortBy] = useState<"newest" | "score" | "status">("score");
   const [verdictFilter, setVerdictFilter] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const pbRef = useRef<PocketBase | null>(null);
+
+  // Initial fetch — client-side, so nothing dynamic is ever server-rendered.
+  useEffect(() => {
+    const qs = searchParams.toString();
+    fetch(`/api/jobs${qs ? `?${qs}` : ""}`)
+      .then(r => r.json())
+      .then(setJobs)
+      .finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Realtime subscriptions — replace the old polling
   useEffect(() => {
@@ -108,7 +117,8 @@ export function JobListClient({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setJobs(prev => prev.map((j: any) => j.id === e.record.id ? { ...j, ...e.record } : j));
       } else if (e.action === 'create') {
-        setJobs(prev => [e.record, ...prev]);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setJobs(prev => prev.some((j: any) => j.id === e.record.id) ? prev : [e.record, ...prev]);
       } else if (e.action === 'delete') {
         setJobs(prev => prev.filter((j: any) => j.id !== e.record.id)); // eslint-disable-line @typescript-eslint/no-explicit-any
       }
@@ -259,6 +269,11 @@ export function JobListClient({
 
         {/* Job list */}
         <div className="overflow-y-auto flex-1">
+          {loading && jobs.length === 0 && (
+            <div className="p-6 text-center">
+              <span className="font-data text-xs animate-pulse" style={{ color: "var(--text-3)" }}>loading…</span>
+            </div>
+          )}
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {visibleJobs.map((job: any) => {
             const isSelected = selectedId === job.id;
