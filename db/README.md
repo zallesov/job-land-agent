@@ -57,53 +57,34 @@ Admin API / Admin UI edits against the live instance. Workflow:
 
 PocketBase JSVM migration API reference: https://pocketbase.io/jsvm/
 
-## Applying migrations to production (mount + restart) — NOT YET WIRED UP
+## Applying migrations to production (mount + restart)
 
-The migrations are written and ready, but the docker-compose mount has **not**
-been applied — that requires a brief `pocketbase` container restart, which also
-bounces `hermes-agent` (it `depends_on` pocketbase `service_healthy`) and
-affects the dashboard. This is production-affecting and needs explicit sign-off.
+**Wired up as of 2026-06-23.** The `pocketbase` service on the server
+(`/docker/hermes-workspace-dwys/docker-compose.yml`, image
+`ghcr.io/muchobien/pocketbase:latest`) now mounts the migrations dir:
 
-The container runs on the remote server at
-`/docker/hermes-workspace-dwys/docker-compose.yml` (service `pocketbase`, image
-`ghcr.io/muchobien/pocketbase:latest`). Its binary lives at
-`/usr/local/bin/pocketbase`, so PocketBase resolves `pb_migrations` at
-`/usr/local/bin/pb_migrations` (mirroring the existing `pb_data` mount at
-`/usr/local/bin/pb_data`).
-
-Proposed compose change — add one line to the `pocketbase` service `volumes:`,
-pointing at a copy of this repo's `db/pb_migrations` on the host:
-
-```diff
-   pocketbase:
-     image: ghcr.io/muchobien/pocketbase:latest
-     container_name: pocketbase
-     restart: unless-stopped
-     ports:
-       - "127.0.0.1:8090:8090"
-     volumes:
-       - /opt/pocketbase/pb_data:/usr/local/bin/pb_data
-+      - /opt/pocketbase/pb_migrations:/usr/local/bin/pb_migrations
-     command: ["serve", "--http=0.0.0.0:8090"]
+```yaml
+    volumes:
+      - /opt/pocketbase/pb_data:/usr/local/bin/pb_data
+      - /opt/pocketbase/pb_migrations:/usr/local/bin/pb_migrations
 ```
 
-Apply steps (run on the server, after sign-off):
+(mirrors the `pb_data` mount — PocketBase resolves `pb_migrations` as a sibling
+of its binary dir, `/usr/local/bin/`). The two historical migrations in this
+repo have been applied (no-op, since the schema was already in that state).
+
+Going forward, use `scripts/migrate-db.sh` from the repo root:
 
 ```bash
-# 1. copy migrations to the host path the volume points at
-mkdir -p /opt/pocketbase/pb_migrations
-cp <repo>/db/pb_migrations/*.js /opt/pocketbase/pb_migrations/
-
-# 2. edit the compose file to add the volume line above
-
-# 3. restart just pocketbase; hermes-agent waits for it to be healthy again
-cd /docker/hermes-workspace-dwys
-docker compose up -d pocketbase
-docker compose logs pocketbase | grep -i migrat   # confirm no-op / applied cleanly
+scripts/migrate-db.sh
 ```
 
-Because the defensive migrations no-op against the current schema, the first
-boot should log them as applied without changing anything.
+It copies `db/pb_migrations/*.js` to `hermes:/opt/pocketbase/pb_migrations/`
+(safe, no restart yet), then asks for interactive confirmation before
+restarting `pocketbase` to actually apply them. Restarting briefly bounces
+`hermes-agent` (`depends_on` pocketbase `service_healthy`) and the dashboard —
+a few seconds of DB downtime. Run it from an actual terminal (the confirmation
+prompt needs a real human at the keyboard, not a piped/automated "y").
 
 ## Generating types
 
