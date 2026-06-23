@@ -1,0 +1,12 @@
+{
+  "name": "@joblandagent/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PocketBase schema + migrations for JobLandAgent. Shared type source for dashboard/ and mcp/.",
+  "scripts": {
+    "typegen": "pocketbase-typegen --url \"$POCKETBASE_URL\" --email \"$POCKETBASE_ADMIN_EMAIL\" --password \"$POCKETBASE_ADMIN_PASSWORD\" --out schema/types.ts"
+  },
+  "devDependencies": {
+    "pocketbase-typegen": "^1.5.0"
+  }
+}

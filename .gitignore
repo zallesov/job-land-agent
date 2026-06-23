@@ -13,6 +13,9 @@ agent/visited_companies.json
 agent/jobleads-search-authenticated.md
 agent/.chrome-profile/
 
+# DB backups — full collection dumps incl. personal data (interviews, events). Local-only.
+db/backups/
+
 # CV / personal docs in scripts/
 scripts/cv_master_content.md
 scripts/page1_nano_prompt.txt
