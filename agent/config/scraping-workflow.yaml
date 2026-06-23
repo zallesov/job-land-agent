@@ -1,0 +1,246 @@
+# Scraping Workflow Definition v2.0
+# Hermes supervises the daily pipeline. Playwright (headed, visible) does browsing.
+#
+# Architecture:
+#   Hermes cron → reads this YAML → for each provider:
+#     calls its Python/Playwright script directly (headful Chrome) →
+#     Playwright opens a visible Chrome window →
+#     scrapes job listings → saves JSON artifact →
+#     Hermes ingests → tags → sends Telegram digest
+#
+# Browser code path:
+#   1. SCRAPING (this file) → scripts/scrape_greenhouse.py / scrape_jobleads.py
+#      Uses Playwright with channel="chrome", headless=False (visible window)
+#      Browser profile: ~/.chrome-profile (persistent, keeps auth)
+#   2. RESEARCH / MANUAL BROWSER OPERATIONS → browser_cdp only
+#      Uses the visible Chrome CDP session at http://localhost:9222.
+#      Never use the non-CDP navigation tool in this agent.
+#
+# Hermes cron setup:
+#   hermes cron create "0 8 * * *" \
+#     --name "daily-scraping-pipeline" \
+#     --workdir <profile-root> \
+#     --deliver telegram \
+#     "Read config/scraping-workflow.yaml. Execute the daily pipeline:
+#      For each enabled provider, run its Python scraper script,
+#      check exit code, verify artifact exists, then ingest + tag + notify."
+
+workflow:
+  name: "daily-scraping-pipeline"
+  version: "2.0"
+  timezone: "Europe/Madrid"
+  schedule: "0 8 * * *"
+
+  # ── Pipeline Steps ──────────────────────────────────────────────
+
+  steps:
+    # Step 0: Start pipeline run record
+    - id: start_pipeline_run
+      description: "Open a pipeline_runs row"
+      command: >
+        python3 -c "
+        from scripts.pb_client import get_pb
+        pb = get_pb()
+        run_id = pb.create_pipeline_run('daily_pipeline')
+        print(run_id)
+        "
+      capture_output: true
+      output_var: PIPELINE_RUN_ID
+      on_failure: abort
+
+    # Step 1: Scrape all enabled providers via Playwright (headed)
+    - id: scrape_providers
+      description: "Scrape each provider with Playwright in headed mode"
+      parallel: false
+
+      # ── Browser note ─────────────────────────────────────────────
+      # Scrapers use Playwright Python with channel="chrome" and
+      # headless=False. A Chrome window pops up briefly on your desktop.
+      # Auth is stored in ~/.chrome-profile (persistent context).
+      # If auth expires, pass --wait-auth to pause and let you log in.
+      # To suppress the window, add --headless to any command.
+
+      providers:
+
+        # ── Greenhouse ─────────────────────────────────────────────
+        - id: greenhouse
+          enabled: true
+          scraper:
+            type: playwright_script
+            script: scripts/scrape_greenhouse.py
+            # Runs all 6 search permutations: SWE/AI/EM × Berlin/Spain × remote
+            # Uses the personalised "for-you" feed by default (--location)
+            # Falls back to keyword search via --titles if feed is empty
+            command: >
+              python3 scripts/scrape_greenhouse.py
+              --location berlin
+              --wait-auth
+            timeout_seconds: 900
+            artifact_pattern: "outputs/greenhouse/runs/greenhouse_jobs_live_YYYY-MM-DD_berlin.json"
+            # also produces: _spain.json for the second location
+          post_scrape:
+            # Second location
+            - command: >
+                python3 scripts/scrape_greenhouse.py
+                --location spain
+                --wait-auth
+              artifact_pattern: "outputs/greenhouse/runs/greenhouse_jobs_live_YYYY-MM-DD_spain.json"
+          error_handling:
+            on_failure: skip_provider
+            notify_telegram: true
+            retry: false
+
+        # ── JobLeads ───────────────────────────────────────────────
+        - id: jobleads
+          enabled: false
+          scraper:
+            type: playwright_script
+            script: scripts/scrape_jobleads.py
+            command: >
+              python3 scripts/scrape_jobleads.py
+              --location berlin
+              --wait-auth
+            timeout_seconds: 600
+            artifact_pattern: "outputs/jobleads/runs/jobleads_jobs_live_YYYY-MM-DD_berlin.json"
+          post_scrape:
+            - command: >
+                python3 scripts/scrape_jobleads.py
+                --location spain
+                --wait-auth
+              artifact_pattern: "outputs/jobleads/runs/jobleads_jobs_live_YYYY-MM-DD_spain.json"
+          error_handling:
+            on_failure: skip_provider
+            notify_telegram: true
+            retry: false
+
+        # ── Hirify ───────────────────────────────────────────────
+        - id: hirify
+          enabled: false
+          scraper:
+            type: pipeline_provider
+            script: scripts/scraping_pipeline.py
+            command: >
+              python3 scripts/scraping_pipeline.py
+              --provider hirify
+            timeout_seconds: 900
+            artifact_pattern: "outputs/hirify/runs/hirify_jobs_live_YYYY-MM-DD.json"
+          error_handling:
+            on_failure: skip_provider
+            notify_telegram: true
+            retry: false
+
+        # ── LinkedIn (future) ──────────────────────────────────────
+        - id: linkedin
+          enabled: false
+          scraper:
+            type: playwright_script
+            script: scripts/scrape_linkedin.py
+            command: python3 scripts/scrape_linkedin.py
+            timeout_seconds: 900
+            artifact_pattern: "outputs/linkedin/runs/linkedin_jobs_live_*.json"
+          error_handling:
+            on_failure: skip_provider
+            notify_telegram: true
+            retry: false
+
+    # Step 2: Ingest artifacts into PocketBase
+    - id: ingest
+      description: "Merge all provider artifacts into PocketBase"
+      command: >
+        python3 scripts/scraping_pipeline.py --ingest-only --all-latest
+      timeout_seconds: 120
+      on_failure: abort
+
+    # Step 3: Tag new jobs
+    - id: tag_new_jobs
+      description: "Keyword-based light tags on newly inserted jobs"
+      command: python3 scripts/tag_new_jobs.py
+      timeout_seconds: 30
+      on_failure: continue
+
+    # Step 4: Telegram daily digest
+    - id: telegram_digest
+      description: "Compact summary to Telegram"
+      command: python3 scripts/telegram_notify.py daily-digest
+      timeout_seconds: 30
+      on_failure: warn
+
+    # Step 5: Close pipeline run
+    - id: finish_pipeline_run
+      description: "Mark pipeline_runs row as complete"
+      command: >
+        python3 -c "
+        import json
+        from scripts.pb_client import get_pb
+        pb = get_pb()
+        pb.finish_pipeline_run('$PIPELINE_RUN_ID', '$PIPELINE_STATUS',
+          summary_json=json.dumps({'status': '$PIPELINE_STATUS'}))
+        "
+      on_failure: warn
+
+  # ── Run Status Contract ─────────────────────────────────────────
+  #
+  #   succeeded  — all enabled providers scraped, all steps passed
+  #   partial    — ≥1 provider succeeded AND ≥1 failed
+  #   failed     — no provider produced artifacts, or ingestion failed
+  #   skipped    — no enabled providers (silent, no digest)
+
+  # ── Error Handling Rules ────────────────────────────────────────
+  #
+  #   abort          — stop pipeline, send failure notification
+  #   skip_provider  — log + notify, continue with next provider
+  #   continue       — log silently, keep going
+  #   warn           — continue but flag in final summary
+
+  # ── Browser Mode ────────────────────────────────────────────────
+  browser:
+    mode: headful  # Chrome window is visible during scraping
+    engine: Playwright (sync_api, channel="chrome")
+    profile: ~/.chrome-profile  # persistent auth context
+    auth_wait: --wait-auth  # pauses if login page detected, waits for user
+
+  # ── Notifications ───────────────────────────────────────────────
+  notifications:
+    daily_digest:
+      format: |
+        Daily Pipeline: {status}
+        New jobs: {count}
+        {breakdown_by_provider}
+        Top: {top_3_jobs}
+        Dashboard: http://localhost:3000
+      command: python3 scripts/telegram_notify.py daily-digest
+
+    provider_failure:
+      format: |
+        Provider: {provider_id}
+        Step: scrape
+        Error: {error_summary}
+        Artifacts: outputs/{provider_id}/runs/
+        Action: run the scraper manually to fix auth or DOM changes
+        Manually: python3 scripts/scrape_{provider_id}.py --location berlin --wait-auth
+      command: >
+        python3 scripts/telegram_notify.py pipeline-failure
+        --provider {provider_id} --error "{error_summary}"
+
+  # ── Artifact Rules ──────────────────────────────────────────────
+  artifacts:
+    base_dir: "outputs"
+    pattern: "outputs/{provider}/runs/{provider}_jobs_live_{date}_{location}.json"
+    retention: forever
+    state_file: "outputs/{provider}/state.json"
+
+  # ── Field Ownership ─────────────────────────────────────────────
+  protected_fields:  # never overwritten by pipeline
+    - status
+    - comment
+    - current_interview_status
+
+  machine_fields:    # owned by scraper/ingest/tag
+    - last_seen
+    - source_payload_json
+    - apply_url
+    - description
+    - light_role_family
+    - light_seniority
+    - light_ai_relevance
+    - light_remote_signal

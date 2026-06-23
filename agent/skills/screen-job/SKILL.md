@@ -1,0 +1,168 @@
+---
+name: screen-job
+description: Screen a job against the candidate's CV and produce a lightweight assessment verdict.
+---
+
+# screen-job
+
+Screen a job against the candidate's profile and produce a lightweight assessment.
+
+## Batch screening (preferred for multiple jobs)
+
+```bash
+python3 scripts/batch_screen_jobs.py --job-ids 42,43,44
+python3 scripts/batch_screen_jobs.py --job-ids 42 43 44 --workers 5
+```
+
+If `batch_screen_jobs.py` is missing** (it can get deleted during project cleanup), call the module directly:
+
+```bash
+python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+from pipeline.screen_jobs_batch import screen_jobs_batch
+import os
+# DEEPSEEK_API_KEY must be set first
+ok_ids, failures = screen_jobs_batch([42, 43, 44], max_workers=5)
+print(f'{len(ok_ids)} ok, {len(failures)} failed')
+"
+```
+
+Runs up to 5 parallel DeepSeek API calls directly — no Hermes agent overhead. Prefer this over calling `screen-job` in a loop.
+
+If the user explicitly wants a one-off screening run without Telegram noise, disable notifications in-process for that run before calling `screen_jobs_batch`:
+
+```python
+import pipeline.screen_job as screen_job_mod
+screen_job_mod._notify_screened = lambda *args, **kwargs: None
+ok_ids, failures = screen_jobs_batch(job_ids, max_workers=5)
+```
+
+Use this only for the current process/run; do not permanently remove notifications from the codebase unless the user asks for a lasting behavior change.
+
+**Telegram notifications:** After each successful screening (`status='screened'`), `screen_job.py` calls `_notify_screened()` to send a Telegram message with format:
+```
+{icon} #{job_id} {verdict} R:{score}
+{title} @ {company}
+{location} | {salary}
+{one_line_summary}
+```
+Icons: 🟢 Strong Apply, 🟡 Apply with Caution, 🔵 Need Research, ⚪ Skip. Fires for ALL success paths (DeepSeek API, local heuristic, hermes_call). Best-effort — failures silently caught. Does NOT block screening.
+
+**Silent one-off batch runs:** if the user wants screening results written to PocketBase but explicitly does NOT want Telegram notifications for that run, disable notifications in-process before calling the batch helper instead of editing production code:
+```python
+import pipeline.screen_job as screen_job_mod
+from pipeline.screen_jobs_batch import screen_jobs_batch
+screen_job_mod._notify_screened = lambda *args, **kwargs: None
+ok_ids, failures = screen_jobs_batch(job_ids, max_workers=5)
+```
+Use this only as a per-run override; do not permanently remove `_notify_screened()` from `screen_job.py`.
+
+**env file loading:** `screen_job.py` auto-loads `.env` from PROJECT_ROOT at module import time (lines 18-24). DEEPSEEK_API_KEY can live in `~/.hermes/profiles/<name>/.env` — no need to `export` it manually.
+
+## Single job via Hermes
+
+`Use skill screen-job. job_id: 42. cv_path: /path/to/cv.md`
+
+## Prerequisites
+
+**1. DEEPSEEK_API_KEY must be set in the environment.** The batch screening script calls the DeepSeek API directly. Export it in the shell running Hermes or place it in a local, untracked `.env` file:
+
+```bash
+export DEEPSEEK_API_KEY="<your DeepSeek API key>"
+```
+
+**⚠️ .env file location matters.** The script (`screen_job.py`) looks for `.env` first in `PROJECT_ROOT` (the `scripts/` parent directory), then falls back to `$HERMES_HOME/.env`. The `.env` must exist at one of these locations — not `~/.env`, not the current working directory.
+
+If `DEEPSEEK_API_KEY` is not loaded, the script silently falls through to `_local_assessment()` — a dumb keyword heuristic that produces garbage verdicts. No error is raised. The assessment will show `Heuristic fallback` in the detail fields (seniority_fit, tech_stack_fit, etc.) and typically returns "Skip" for any job whose description mentions a domain keyword (healthcare, marketing, finance, security).
+
+**2. The job must have a description.** Screening reads the `description` field from the DB. If `description` is NULL or too short (<50 chars), the verdict will be `"Need Research"` — essentially a waste of a call.
+
+Check before batch-screening existing jobs:
+```sql
+SELECT id, title, posted_company_name FROM jobs
+WHERE provider='<name>' AND (description IS NULL OR length(description) <= 50);
+```
+
+If many are missing descriptions, re-enrich first (see `enrich-job` skill's batch workflow).
+
+## Known failures
+
+### "parse error: substring not found"
+
+The DeepSeek API returned a response that the batch script couldn't parse as valid JSON. This is a transient DeepSeek issue — the model occasionally outputs non-JSON text alongside the JSON block.
+
+**Fix:** Re-run the failed job IDs. If the same jobs fail consistently, screen them via the Hermes single-job workflow instead (see "Single job via Hermes" above). The Hermes agent's structured output extraction handles malformed responses better than the batch script's parser.
+
+### All jobs fail with "DEEPSEEK_API_KEY not set"
+
+The key was not exported to the environment. See Prerequisites §1 for the export command.
+
+## False "screening failed" notification from `assessment_status`
+
+When writing an assessment row directly to `job_assessments` (bypassing the batch script), **you MUST set `assessment_status`** to a non-`pending` value — use `'completed'` or `'screened'`. The notification system polls for `assessment_status='pending'` and fires an alert if it stays that way.
+
+The batch screening scripts handle this internally, but direct inserts or Hermes agent writes often miss it. Common symptom: the user gets a Telegram "screening failed" notification even though the assessment data (verdict, score) is correct in the DB.
+
+**Fix (after-the-fact):**
+```sql
+UPDATE job_assessments SET assessment_status='completed', updated_at=datetime('now') WHERE job_id=<N>;
+UPDATE jobs SET pipeline_status='screened', updated_at=datetime('now') WHERE id=<N>;
+```
+
+**Self-check in code:**
+```python
+# When inserting an assessment row, always include assessment_status
+con.execute('''
+    INSERT INTO job_assessments (job_id, assessment_status, apply_verdict, relevance_score, ...)
+    VALUES (?, 'completed', ?, ?, ...)
+''', (...))
+```
+
+## Task
+
+1. Read the CV from cv_path
+2. Read `config/user.yaml` — extract `job_preferences`, `languages`, and `desired_salary` (may be empty strings)
+3. Read the job from the database using job_id (use your DB read tools). Fields: title, description, company name, location, remote_scope, salary_range.
+4. Assess the job against the candidate's profile. Evaluate ALL of the following:
+   - **apply_verdict**: one of "Strong Apply" | "Apply with Caution" | "Need Research" | "Skip"
+     - "Strong Apply": clear match — right seniority, tech stack, remote, no red flags, aligns with user preferences
+     - "Apply with Caution": worth applying but notable caveats (borderline tech fit, unclear remote, no salary info)
+     - "Need Research": potentially interesting but cannot assess without more context (no description, vague company, unclear remote policy)
+     - "Skip": hard disqualifiers — on-site only, junior/entry-level, completely unrelated domain, requires relocation outside target list (Berlin, Spain, EU remote), OR explicitly conflicts with `job_preferences` (e.g. fintech role when user said "no fintech"), OR requires a language the user doesn't speak per `languages`
+   - **relevance_score**: 0–100 based on tech stack fit, seniority match, remote eligibility, domain relevance
+   - **one_line_summary**: one sentence describing the role and fit
+   - **seniority_fit**: brief note on level match
+   - **tech_stack_fit**: brief note on tech overlap with candidate's profile
+   - **remote_eligibility**: what the job says about remote; candidate target is EU remote / Berlin / Spain
+   - **salary_assessment**: posted salary vs `desired_salary`; flag if clearly below target or "Not disclosed"
+
+## Output
+
+Respond with a single JSON block. No prose.
+
+```json
+{
+  "status": "success",
+  "apply_verdict": "Strong Apply",
+  "relevance_score": 85,
+  "one_line_summary": "Senior backend Python role, fully remote EU, great stack fit",
+  "seniority_fit": "Senior IC, matches target level",
+  "tech_stack_fit": "Python, Postgres, Kafka — strong overlap",
+  "remote_eligibility": "Fully remote, EU timezone",
+  "salary_assessment": "€90k–120k posted"
+}
+```
+
+Failure (cannot read job or CV):
+```json
+{"status": "failure", "error": "could not load job description"}
+```
+
+## Rules
+- apply_verdict is always one of the four exact strings above
+- relevance_score must be an integer 0–100
+- Do NOT research the company — assess only from the job description and CV
+- If description is missing or too short to assess, use verdict "Need Research"
+- `job_preferences` and `languages` are hard constraints for "Skip" — if the job clearly violates them, verdict is "Skip" regardless of tech fit
+- `desired_salary`: if posted salary is clearly below the target range, downgrade verdict to "Skip" or "Apply with Caution" depending on severity
+- If `job_preferences`, `languages`, or `desired_salary` are empty strings, ignore them

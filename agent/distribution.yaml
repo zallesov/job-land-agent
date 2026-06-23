@@ -1,0 +1,27 @@
+name: joblandagent
+version: 0.1.0
+description: Autonomous job search assistant for scraping, screening, researching,
+  and applying to software roles.
+hermes_requires: '>=0.12.0'
+author: zallesov
+license: MIT
+env_requires:
+- name: DEEPSEEK_API_KEY
+  description: DeepSeek API key used by the default Hermes model provider.
+distribution_owned:
+- distribution.yaml
+- SOUL.md
+- config.yaml
+- .env.EXAMPLE
+- README.md
+- package.json
+- pnpm-lock.yaml
+- pnpm-workspace.yaml
+- requirements.txt
+- start-chrome.sh
+- config
+- skills
+- scripts
+- dashboard
+source: github.com/zallesov/job-land-agent
+installed_at: '2026-06-16T10:10:53+00:00'

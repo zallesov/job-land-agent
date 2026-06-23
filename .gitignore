@@ -1,0 +1,45 @@
+# Secrets / credentials
+.env
+.env.local
+.env.backup*
+agent/google_client_secret.json
+agent/google_token.json
+
+# Personal data
+agent/config/user.yaml
+agent/config/cv.md
+agent/config/resume.pdf
+agent/visited_companies.json
+agent/jobleads-search-authenticated.md
+agent/.chrome-profile/
+
+# CV / personal docs in scripts/
+scripts/cv_master_content.md
+scripts/page1_nano_prompt.txt
+scripts/page2_nano_prompt.txt
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.db.backup*
+*.sqlite
+
+# Node
+node_modules/
+dashboard/node_modules/
+dashboard/.next/
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Claude Code local settings (may contain API keys)
+.claude/settings.local.json

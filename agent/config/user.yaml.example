@@ -1,0 +1,52 @@
+# User identity — used by apply-job skill
+user:
+  name: "Your Name"
+  email: "you@example.com"
+  linkedin_url: "https://linkedin.com/in/yourhandle"
+  resume_pdf_path: "config/resume.pdf"
+
+# CV in markdown format — used by enrich-job and sanity-check-job skills
+cv_path: "config/cv.md"
+
+# Target job locations — any city; country_code (ISO 3166-1 alpha-2) required for feed scrapers
+locations:
+  - city: "Berlin"
+    country: "Germany"
+    country_code: "DE"
+  - city: "Barcelona"
+    country: "Spain"
+    country_code: "ES"
+
+# Work style preference — used by sanity_check_job and job-research for scoring
+work_style:
+  preferred: "remote"          # remote | hybrid | onsite
+  willing_to_relocate: false
+
+# Job title search terms — used by Sprout and title filtering in other scrapers
+search_terms:
+  - "Software Engineer"
+  - "AI Engineer"
+  - "Engineering Manager"
+  - "Platform Engineer"
+
+# Active job board providers
+providers:
+  greenhouse: true
+  jobleads: true
+  wellfound: true
+  sprout: false
+  hirify: false
+
+# Company/role preferences — used by screen-job and job-research for Apply/Skip decisions
+# Free text. Examples: "no fintech, no adtech", "IC only, no management", "startups only"
+job_preferences: ""
+
+# Spoken languages — used to filter roles requiring languages the user doesn't speak
+# Free text. Example: "English (fluent), German (B2), Russian (native)"
+languages: ""
+
+# Desired salary range — used during screening to flag underpaid roles
+# Free text. Example: "€120k–150k", "$150k+", "140–180K EUR"
+desired_salary: ""
+
+
