@@ -8,7 +8,7 @@ An autonomous job search assistant for software engineers. Scrapes job boards, e
 
 ## How it works
 
-1. **Scrape** — Playwright pulls jobs from Greenhouse, JobLeads, Wellfound, Sprout, and Hirify into a local SQLite DB
+1. **Scrape** — Playwright pulls jobs from Greenhouse, JobLeads, Wellfound, Sprout, and Hirify into remote PocketBase
 2. **Enrich** — AI extracts salary, apply URL, full description, and remote status from each posting
 3. **Sanity-check** — AI scores each job against your CV, filtering out mismatches by seniority, location, and work style
 4. **Research** — Deep company analysis: funding, Glassdoor, red flags, fit score
@@ -54,7 +54,7 @@ cp config/user.yaml.example config/user.yaml
 cp ~/your-cv.md config/cv.md
 ```
 
-Runtime state, local config, auth, logs, browser profiles, and databases live under `~/.hermes/profiles/joblandagent/` and are not committed to this repo.
+Runtime state, local config, auth, logs, and browser profiles live under `~/.hermes/profiles/joblandagent/` and are not committed to this repo. Job data lives in remote PocketBase, configured by `POCKETBASE_URL` in the profile `.env`.
 
 The installed profile is self-contained. Hermes is configured with `terminal.cwd: .`, so commands run from the active profile root. Do not start the dashboard from a developer checkout when testing the installed profile.
 
@@ -108,7 +108,7 @@ hermes -p joblandagent      # installed distribution profile
 hermes -p joblandagent-dev  # local development distribution profile
 ```
 
-Each profile owns its own `jobs.db`, `config/user.yaml`, `config/cv.md`, logs, sessions, and dashboard dependencies.
+Each profile owns its own `config/user.yaml`, `config/cv.md`, `.env`, logs, sessions, and dashboard dependencies. Job data is shared through the configured PocketBase instance.
 
 **2. Configure**
 
@@ -124,7 +124,7 @@ cp ~/your-cv.md config/cv.md
 export DEEPSEEK_API_KEY="<your DeepSeek API key>"
 ```
 
-Do not commit API keys, `.env`, `jobs.db`, local CV files, or runtime profile state.
+Do not commit API keys, `.env`, local CV files, runtime profile state, or legacy database/backups.
 
 **4. Set up Telegram (optional but recommended)**
 
@@ -149,7 +149,7 @@ Hermes walks through the rest of setup: asking for your locations, CV, search te
 
 ## Starting the dashboard
 
-Start the dashboard from the active profile root. This is what makes `../jobs.db` resolve to that profile's local database:
+Start the dashboard from the active profile root so it uses that profile's environment, including `POCKETBASE_URL`:
 
 ```bash
 pnpm run dev
@@ -218,7 +218,6 @@ All user config lives in `config/user.yaml` (copy from `config/user.yaml.example
 | `work_style.preferred` | `remote` \| `hybrid` \| `onsite` |
 | `search_terms` | Job titles to search and filter by |
 | `providers` | Enable/disable each job board |
-| `db_path` | SQLite DB file path |
 
 Hirify ignores `search_terms`, `locations`, and `work_style` for search construction; create saved filters on Hirify and enable `providers.hirify`.
 

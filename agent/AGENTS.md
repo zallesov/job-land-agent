@@ -15,7 +15,7 @@ scripts/
   enrich_jobs_batch.py    Bulk enrichment
   pipeline/               Reusable pipeline modules
     dedup.py              Deduplicate by dedup_key
-    ingest.py             Write ShallowJob list → DB
+    ingest.py             Write ShallowJob list → PocketBase
     enrich_job.py         CDP enrichment module
     screen_job.py         Screen one job via LLM
     screen_jobs_batch.py  Parallel batch screening
@@ -34,7 +34,7 @@ config/
   cv.md                   Your CV in markdown (gitignored)
   user.yaml.example       Template
 tests/                    pytest suite
-jobs.db                   SQLite database (gitignored at runtime)
+.env                      PocketBase + model credentials (gitignored)
 config.yaml               Hermes agent config (model: deepseek-v4-flash)
 SOUL.md                   Agent persona + operational rules
 ```
@@ -47,7 +47,9 @@ SOUL.md                   Agent persona + operational rules
 |---|---|
 | User config | `config/user.yaml` |
 | CV | `config/cv.md` |
-| Database | `jobs.db` (override via `db_path` in config) |
+| Database | Remote PocketBase via `POCKETBASE_URL` in `.env` |
+| Schema/migrations | `../db/` |
+| PocketBase client | `scripts/pb_client.py` |
 | Skills | `skills/` |
 | Pipeline scripts | `scripts/` |
 | Providers | `scripts/providers/<name>/` |
@@ -137,54 +139,50 @@ Each provider exposes exactly two files:
 
 ---
 
-## Database Schema
+## Database
 
-SQLite at `jobs.db`. Key tables:
+All job data lives in remote PocketBase (`POCKETBASE_URL` in `.env`), not SQLite. The `jobs.db` file is legacy and must not be used for active job storage.
 
-**`jobs`** — one row per posting
+Schema and migrations live in `../db/`. Until the MCP server owns database access, agent scripts use `scripts/pb_client.py`:
+
+```python
+from scripts.pb_client import get_pb
+
+pb = get_pb()
+jobs = pb.get_list("jobs", "pipeline_status='new' && description=''", sort="-created_at")
+```
+
+Key collections:
+
+**`jobs`** — one record per posting
 - `pipeline_status`: `new` | `enriched` | `enrich_failed` | `screened` | `skip`
-- `user_status`: `applied` | `rejected` | `offer` | `withdrawn` | NULL
-- `research_status`: `researched` | NULL
-- `status`: legacy field, still used in some queries
+- `user_status`: `applied` | `rejected` | `offer` | `withdrawn` | empty
+- `research_status`: `researched` | empty
+- `status`: legacy field, still present for compatibility
 
-**`job_assessments`** — LLM screening output (1:1 with jobs)
-- `relevance_score` (0–100), `apply_verdict`, `red_flag_scan`, `seniority_fit`, `tech_stack_fit`, `remote_eligibility`
-
-**`company_research`** — company deep-research
-- `trustworthiness_score`, `glassdoor_summary`, `funding_summary`, `risk_news`
+**`job_assessments`** — LLM screening output linked to `jobs`
+- `relevance_score` (0-100), `apply_verdict`, `red_flag_scan`, `seniority_fit`, `tech_stack_fit`, `remote_eligibility`
 
 **`companies`** — normalized company records
-**`applications`** — draft/submitted application tracking
-**`agent_commands`** — async command queue (research, enrich triggered via dashboard)
 
-Key queries:
-```sql
--- Jobs needing enrichment
-SELECT id, url FROM jobs WHERE pipeline_status = 'new' AND description IS NULL;
+**`company_research`** — deep research linked to `companies`
+- `trustworthiness_score`, `glassdoor_summary`, `funding_summary`, `risk_news`
 
--- Jobs needing screening
-SELECT id FROM jobs WHERE pipeline_status = 'enriched';
+**`agent_commands`** — async command queue for dashboard-triggered work
 
--- Top screened jobs
-SELECT j.id, j.title, j.posted_company_name, a.apply_verdict, a.relevance_score
-FROM jobs j JOIN job_assessments a ON a.job_id = j.id
-ORDER BY a.relevance_score DESC;
+**`events`** — append-only event log
 
--- Research queue
-SELECT j.id, j.title FROM jobs j
-WHERE j.pipeline_status = 'screened' AND j.research_status IS NULL;
-```
+**`pipeline_runs`** — scraping/pipeline run tracking
+
+**`interviews`** — interview process tracking
 
 ---
 
 ## DB Write Rules
 
-**Never write raw SQL to the database** except:
-1. `status='running'` update in job-research Step 1
-2. `db_write_research.py` in job-research Step 3
-3. Explicit user instruction
+Use the pipeline helper scripts for writes. When a direct database read/write is unavoidable, use `scripts/pb_client.py` (`from scripts.pb_client import get_pb`) and PocketBase collection names. Do not use SQLite, raw SQL, `sqlite3 jobs.db`, or `from scripts.db import`.
 
-Always use the pipeline helper scripts for writes. Raw SQL produces corrupted state (missing assessments, botched lifecycle).
+Ask before writing to PocketBase unless the user explicitly requested the write.
 
 ---
 
@@ -220,16 +218,16 @@ no longer started or referenced from agent skills. See `../dashboard/README.md`.
 
 ## Temporary Files
 
-Use `tmp/` for any one-off scripts, SQL, data dumps. Never litter project root.
+Use `tmp/` for any one-off scripts, PocketBase maintenance snippets, or data dumps. Never litter project root.
 
 ---
 
 ## What NOT to Commit
 
 See `.gitignore`. Key exclusions:
-- `jobs.db`, `*.db-*`, backups
+- `.env` (PocketBase and API credentials)
+- `jobs.db`, `*.db-*`, backups (legacy/runtime state)
 - `config/user.yaml`, `config/cv.md` (personal data)
-- `.env` (API keys)
 - Personal CV/PDF files, research outputs, one-off scripts
 
 ---
