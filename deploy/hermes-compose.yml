@@ -1,0 +1,80 @@
+# Hermes agent stack — runs SEPARATELY from the data-plane stack
+# (docker-compose.yml). Deployed on the hermes host at
+# /docker/hermes-workspace-dwys/ as compose project "hermes-workspace-dwys".
+#
+# Both services use prebuilt registry images (no local build), so "deploy" is
+# just: ship this file -> docker compose pull -> docker compose up -d.
+#
+# PERSISTENCE — do NOT `docker compose down -v` this stack. The named volumes
+# below hold the agent's auth tokens and workspace state:
+#   hermes-agent-data      -> /opt/data (agent) + /home/workspace/.hermes (tokens)
+#   hermes-workspace-files -> /workspace
+# Removing them logs the agent out of every provider and wipes the workspace.
+#
+# The agent reaches PocketBase only through the public URL (https://pb.zall.dev)
+# / the MCP server — pocketbase itself lives in the data-plane stack
+# (/docker/joblandagent/), not here.
+services:
+  hermes-agent:
+    image: nousresearch/hermes-agent:latest
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    env_file:
+      - .env
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
+      API_SERVER_KEY: ${API_SERVER_KEY:-}
+      API_SERVER_HOST: '0.0.0.0'
+      API_SERVER_ENABLED: 'true'
+      HERMES_UID: '10010'
+      HERMES_DASHBOARD: '1'
+      HERMES_DASHBOARD_HOST: '0.0.0.0'
+      HERMES_DASHBOARD_PORT: '9119'
+      HERMES_DASHBOARD_INSECURE: '1'
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${DASHBOARD_USER:-admin}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_PASSWORD:-}
+      POCKETBASE_URL: 'https://pb.zall.dev'
+      NEXT_PUBLIC_POCKETBASE_URL: 'https://pb.zall.dev'
+    ports:
+      - "127.0.0.1:9119:9119"
+    volumes:
+      - hermes-agent-data:/opt/data
+
+  hermes-workspace:
+    image: ghcr.io/outsourc-e/hermes-workspace:latest
+    restart: unless-stopped
+    depends_on:
+      - hermes-agent
+    ports:
+      - "3000"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${COMPOSE_PROJECT_NAME}.${TRAEFIK_HOST}`)
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls.certresolver=letsencrypt
+      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=3000
+    env_file:
+      - .env
+    environment:
+      HERMES_HOME: /home/workspace/.hermes
+      HERMES_WORKSPACE_DIR: /workspace
+      HERMES_API_URL: http://hermes-agent:8642
+      HERMES_DASHBOARD_URL: http://hermes-agent:9119
+      HERMES_API_TOKEN: ${API_SERVER_KEY:-}
+      HERMES_PASSWORD: ${HERMES_PASSWORD:-}
+      COOKIE_SECURE: '1'
+      TRUST_PROXY: '1'
+    volumes:
+      - hermes-agent-data:/home/workspace/.hermes
+      - hermes-workspace-files:/workspace
+
+volumes:
+  hermes-agent-data:
+  hermes-workspace-files:

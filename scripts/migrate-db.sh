@@ -25,11 +25,11 @@ if [ -z "$(ls -A "$MIGRATIONS_DIR"/*.js 2>/dev/null)" ]; then
 fi
 
 echo "==> shipping migration files to hermes:$REMOTE_MIGRATIONS_PATH (safe, no restart yet)"
-ssh hermes "mkdir -p $REMOTE_MIGRATIONS_PATH"
+ssh -n hermes "mkdir -p $REMOTE_MIGRATIONS_PATH"
 scp "$MIGRATIONS_DIR"/*.js "hermes:$REMOTE_MIGRATIONS_PATH/"
 
 MOUNTED=0
-if ssh hermes "grep -qF '$VOLUME_LINE' '$REMOTE_COMPOSE'"; then
+if ssh -n hermes "grep -qF '$VOLUME_LINE' '$REMOTE_COMPOSE'"; then
   MOUNTED=1
 fi
 
@@ -53,21 +53,29 @@ fi
 
 if [ "$MOUNTED" -eq 0 ]; then
   echo "==> adding migrations volume to compose"
-  ssh hermes "sed -i \"/pb_data:\\/usr\\/local\\/bin\\/pb_data/a\\\\
+  ssh -n hermes "sed -i \"/pb_data:\\/usr\\/local\\/bin\\/pb_data/a\\\\
 $VOLUME_LINE
 \" '$REMOTE_COMPOSE'"
-  ssh hermes "cd $REMOTE_STACK_DIR && docker compose config -q" \
+  ssh -n hermes "cd $REMOTE_STACK_DIR && docker compose config -q" \
     || { echo "compose file invalid after edit, aborting before restart"; exit 1; }
 fi
 
 echo "==> restarting pocketbase"
-ssh hermes "cd $REMOTE_STACK_DIR && docker compose up -d pocketbase"
+# `up -d` no-ops when the container/config is unchanged, so PocketBase would
+# never re-run its startup migration runner. If we just added the volume mount
+# the config changed (recreate picks it up); otherwise force a real bounce so
+# newly-shipped migration files are applied.
+if [ "$MOUNTED" -eq 0 ]; then
+  ssh -n hermes "cd $REMOTE_STACK_DIR && docker compose up -d pocketbase"
+else
+  ssh -n hermes "cd $REMOTE_STACK_DIR && docker compose restart pocketbase"
+fi
 
 echo "==> waiting for healthy"
-ssh hermes "timeout 30 sh -c 'until docker inspect -f \"{{.State.Health.Status}}\" pocketbase | grep -q healthy; do sleep 1; done'" \
+ssh -n hermes "timeout 30 sh -c 'until docker inspect -f \"{{.State.Health.Status}}\" pocketbase | grep -q healthy; do sleep 1; done'" \
   && echo "    healthy" || echo "    WARNING: did not report healthy within 30s, check logs"
 
 echo "==> migration log lines from this boot"
-ssh hermes "docker logs pocketbase --since 1m 2>&1 | grep -i migrat || echo '(no migration-related log lines found)'"
+ssh -n hermes "docker logs pocketbase --since 1m 2>&1 | grep -i migrat || echo '(no migration-related log lines found)'"
 
 echo "==> done — verify https://jobs.zall.dev/api/jobs still works"

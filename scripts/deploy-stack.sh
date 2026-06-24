@@ -15,7 +15,11 @@ echo "==> backing up PocketBase data on host"
 ssh hermes 'tar czf /opt/pocketbase/backup-$(date +%Y%m%d-%H%M%S).tgz -C /opt/pocketbase pb_data && ls -lh /opt/pocketbase/backup-*.tgz | tail -1'
 
 echo "==> building images (linux/amd64)"
-docker buildx build --platform linux/amd64 -t joblandagent-dashboard:latest --load "$REPO_ROOT/dashboard"
+# The browser bundle hard-codes this PocketBase URL (NEXT_PUBLIC_*, build-time).
+NEXT_PUBLIC_POCKETBASE_URL="${NEXT_PUBLIC_POCKETBASE_URL:-https://pb.zall.dev}"
+docker buildx build --platform linux/amd64 \
+  --build-arg "NEXT_PUBLIC_POCKETBASE_URL=$NEXT_PUBLIC_POCKETBASE_URL" \
+  -t joblandagent-dashboard:latest --load "$REPO_ROOT/dashboard"
 docker buildx build --platform linux/amd64 -t joblandagent-mcp:latest --load "$REPO_ROOT/mcp"
 
 echo "==> shipping images to hermes"

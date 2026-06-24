@@ -1,5 +1,5 @@
 // Data access layer — PocketBase backend.
-import { getServerPb } from './pb';
+import { getServerPb } from './pb-server';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -7,6 +7,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so the
+# PocketBase URL the browser (login + realtime) uses is fixed here, not at run.
+ARG NEXT_PUBLIC_POCKETBASE_URL=https://pb.zall.dev
+ENV NEXT_PUBLIC_POCKETBASE_URL=$NEXT_PUBLIC_POCKETBASE_URL
 RUN npm run build
 
 FROM node:20-alpine AS runner

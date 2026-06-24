@@ -110,6 +110,7 @@ export function JobListClient({
   // Realtime subscriptions — replace the old polling
   useEffect(() => {
     const pb = new PocketBase(PB_URL);
+    pb.authStore.loadFromCookie(document.cookie);
     pbRef.current = pb;
 
     pb.collection('jobs').subscribe('*', (e) => {

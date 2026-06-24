@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createResearchCommand, createScreenCommand, getJobDetail, markCommandFailed } from "@/lib/db";
+import { unauthorizedResponse } from "@/lib/auth";
 import { spawn } from "child_process";
 import { openSync } from "fs";
 import path from "path";
@@ -27,6 +28,9 @@ const COMMAND_CONFIG: Record<string, {
 };
 
 export async function POST(req: NextRequest) {
+  const unauth = unauthorizedResponse();
+  if (unauth) return unauth;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let body: any;
   try { body = await req.json(); } catch {
