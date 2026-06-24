@@ -32,6 +32,7 @@ scripts/page2_nano_prompt.txt
 node_modules/
 dashboard/node_modules/
 dashboard/.next/
+mcp/dist/
 
 # Python
 __pycache__/

@@ -7,7 +7,7 @@ Monorepo for JobLandAgent — split from the original combined `interviews` /
 agent/        Hermes skills + pipeline scripts + tests. The agent itself.
 dashboard/    Next.js dashboard (Pages talk to PocketBase directly today).
 db/           PocketBase migrations + generated types (db/README.md). Shared schema source.
-mcp/          MCP server exposing job data to the agent — not built yet.
+mcp/          HTTP MCP server exposing PocketBase job/interview data to Hermes.
 scripts/      Dev-only one-off scripts. Not used by the agent at runtime.
 ```
 
@@ -53,4 +53,5 @@ npm run dev   # http://localhost:3000
   `users`/`applications` collections, cleaned up 646 orphaned `job_assessments`,
   converted FK-ish text fields to proper `relation` fields). Mount + restart to
   actually apply the migration runner on the server is still pending sign-off.
-- `mcp/` is a placeholder — work hasn't started.
+- `mcp/` contains the HTTP MCP server for remote Hermes access to PocketBase
+  `jobs` and `interviews` data.

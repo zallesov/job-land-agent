@@ -18,6 +18,7 @@ export const Collections = {
 	Interviews: "interviews",
 	JobAssessments: "job_assessments",
 	Jobs: "jobs",
+	McpTokens: "mcp_tokens",
 	PipelineRuns: "pipeline_runs",
 } as const
 export type Collections = typeof Collections[keyof typeof Collections]
@@ -234,6 +235,16 @@ export type JobsRecord<Tsource_payload_json = unknown> = {
 	user_status?: string
 }
 
+export type McpTokensRecord<Tscopes = unknown> = {
+	enabled?: boolean
+	expires_at?: string
+	id: string
+	last_used_at?: string
+	name: string
+	scopes?: null | Tscopes
+	token_hash: string
+}
+
 export type PipelineRunsRecord<Tsummary_json = unknown> = {
 	error?: string
 	finished_at?: string
@@ -257,6 +268,7 @@ export type EventsResponse<Tevent_json = unknown, Texpand = unknown> = Required<
 export type InterviewsResponse<Tcontacts_json = unknown, Temails_json = unknown, Tinterview_dates_json = unknown, Texpand = unknown> = Required<InterviewsRecord<Tcontacts_json, Temails_json, Tinterview_dates_json>> & BaseSystemFields<Texpand>
 export type JobAssessmentsResponse<Traw_assessment_json = unknown, Tsource_urls_json = unknown, Texpand = unknown> = Required<JobAssessmentsRecord<Traw_assessment_json, Tsource_urls_json>> & BaseSystemFields<Texpand>
 export type JobsResponse<Tsource_payload_json = unknown, Texpand = unknown> = Required<JobsRecord<Tsource_payload_json>> & BaseSystemFields<Texpand>
+export type McpTokensResponse<Tscopes = unknown, Texpand = unknown> = Required<McpTokensRecord<Tscopes>> & BaseSystemFields<Texpand>
 export type PipelineRunsResponse<Tsummary_json = unknown, Texpand = unknown> = Required<PipelineRunsRecord<Tsummary_json>> & BaseSystemFields<Texpand>
 
 // Types containing all Records and Responses, useful for creating typing helper functions
@@ -274,6 +286,7 @@ export type CollectionRecords = {
 	interviews: InterviewsRecord
 	job_assessments: JobAssessmentsRecord
 	jobs: JobsRecord
+	mcp_tokens: McpTokensRecord
 	pipeline_runs: PipelineRunsRecord
 }
 
@@ -290,6 +303,7 @@ export type CollectionResponses = {
 	interviews: InterviewsResponse
 	job_assessments: JobAssessmentsResponse
 	jobs: JobsResponse
+	mcp_tokens: McpTokensResponse
 	pipeline_runs: PipelineRunsResponse
 }
 
