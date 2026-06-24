@@ -1,0 +1,57 @@
+# Combined JobLandAgent data-plane stack: pocketbase + dashboard + mcp.
+# Lives on the host at /docker/joblandagent/. The Hermes agent runs in its own
+# stack (/docker/hermes-workspace-dwys/) and reaches the DB only via the MCP
+# server, so it is intentionally NOT part of this compose.
+#
+# Public edge is traefik (host network) via /docker/traefik/config/dynamic.yml,
+# which routes pb.zall.dev->8090, jobs.zall.dev->3000, mcp.zall.dev->8787. All
+# ports below are published on 127.0.0.1 only; traefik is the only public face.
+services:
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: pocketbase
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      # Host bind mounts — the live database. Do not change these paths.
+      - /opt/pocketbase/pb_data:/usr/local/bin/pb_data
+      - /opt/pocketbase/pb_migrations:/usr/local/bin/pb_migrations
+    command: ["serve", "--http=0.0.0.0:8090"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dashboard:
+    image: joblandagent-dashboard:latest
+    container_name: joblandagent-dashboard
+    restart: unless-stopped
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    env_file:
+      - .env
+    # Talks to PocketBase over the public URL (client bundle is baked with
+    # NEXT_PUBLIC_POCKETBASE_URL=https://pb.zall.dev at build time).
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  mcp:
+    image: joblandagent-mcp:latest
+    container_name: joblandagent-mcp
+    restart: unless-stopped
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # MCP shares the stack network with pocketbase — talk to it internally,
+      # not back out through traefik/TLS. Overrides POCKETBASE_URL from .env.
+      POCKETBASE_URL: http://pocketbase:8090
+      PORT: "8787"
+      HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8787:8787"

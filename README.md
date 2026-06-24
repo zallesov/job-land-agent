@@ -46,6 +46,42 @@ npm install
 npm run dev   # http://localhost:3000
 ```
 
+## Deployment (production)
+
+All three data-plane apps run in **one** compose stack on the hermes host
+(`72.61.183.105`, `ssh hermes`) at `/docker/joblandagent/`:
+
+| Service | Container | Image | Public host (via traefik) |
+|---|---|---|---|
+| `pocketbase` | `pocketbase` | `ghcr.io/muchobien/pocketbase:latest` | `pb.zall.dev` |
+| `dashboard` | `joblandagent-dashboard` | `joblandagent-dashboard:latest` (built here) | `jobs.zall.dev` (HTTP Basic) |
+| `mcp` | `joblandagent-mcp` | `joblandagent-mcp:latest` (built here) | `mcp.zall.dev` (Bearer token) |
+
+Compose source of truth: [`deploy/docker-compose.yml`](deploy/docker-compose.yml)
+(env template: [`deploy/.env.example`](deploy/.env.example); the real `.env`
+lives only on the host). PocketBase data is host-mounted at
+`/opt/pocketbase/{pb_data,pb_migrations}` — survives container/stack recreation.
+
+The **Hermes agent** runs in its own stack (`/docker/hermes-workspace-dwys/`)
+and reaches the DB only through the MCP server, so it is deliberately not part
+of this stack. `mcp` talks to PocketBase internally (`http://pocketbase:8090`);
+the dashboard uses the public `https://pb.zall.dev`.
+
+### Deploy
+
+```bash
+scripts/deploy-stack.sh    # backup DB -> build dashboard+mcp (amd64) -> ship -> up -d
+```
+
+### Verify
+
+```bash
+curl -s  https://pb.zall.dev/api/health         # {"code":200,...}
+curl -sI https://jobs.zall.dev                  # 401 unauthenticated (Basic), 200 with creds
+curl -s  https://mcp.zall.dev/healthz           # {"ok":true}
+ssh hermes 'cd /docker/joblandagent && docker compose ps'
+```
+
 ## Status
 
 - `agent/` and `dashboard/` extracted from the combined profile checkout (2026-06-23).

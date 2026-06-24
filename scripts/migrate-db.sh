@@ -6,9 +6,8 @@
 # ship the .js files to the host path the container mounts, then restart the
 # container so its startup migration runner picks them up.
 #
-# This briefly bounces pocketbase -> hermes-agent (depends_on healthy) and the
-# dashboard lose DB access for the few seconds of the restart. The script
-# stops and asks before doing that part.
+# This briefly bounces pocketbase and the dashboard/mcp that depend on it for
+# the few seconds of the restart. The script stops and asks before that part.
 #
 # Usage: scripts/migrate-db.sh
 set -euo pipefail
@@ -16,7 +15,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/db/pb_migrations"
 REMOTE_MIGRATIONS_PATH="/opt/pocketbase/pb_migrations"
-REMOTE_COMPOSE="/docker/hermes-workspace-dwys/docker-compose.yml"
+REMOTE_COMPOSE="/docker/joblandagent/docker-compose.yml"
+REMOTE_STACK_DIR="/docker/joblandagent"
 VOLUME_LINE="      - ${REMOTE_MIGRATIONS_PATH}:/usr/local/bin/pb_migrations"
 
 if [ -z "$(ls -A "$MIGRATIONS_DIR"/*.js 2>/dev/null)" ]; then
@@ -56,12 +56,12 @@ if [ "$MOUNTED" -eq 0 ]; then
   ssh hermes "sed -i \"/pb_data:\\/usr\\/local\\/bin\\/pb_data/a\\\\
 $VOLUME_LINE
 \" '$REMOTE_COMPOSE'"
-  ssh hermes "cd /docker/hermes-workspace-dwys && docker compose config -q" \
+  ssh hermes "cd $REMOTE_STACK_DIR && docker compose config -q" \
     || { echo "compose file invalid after edit, aborting before restart"; exit 1; }
 fi
 
 echo "==> restarting pocketbase"
-ssh hermes "cd /docker/hermes-workspace-dwys && docker compose up -d pocketbase"
+ssh hermes "cd $REMOTE_STACK_DIR && docker compose up -d pocketbase"
 
 echo "==> waiting for healthy"
 ssh hermes "timeout 30 sh -c 'until docker inspect -f \"{{.State.Health.Status}}\" pocketbase | grep -q healthy; do sleep 1; done'" \
