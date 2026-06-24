@@ -133,6 +133,7 @@ export function JobDetail({ jobId, updateJobAction, onDelete }: {
   // Realtime: keep this job's detail view live without manual refresh.
   useEffect(() => {
     const pb = new PocketBase(PB_URL);
+    pb.authStore.loadFromCookie(document.cookie);
 
     pb.collection('jobs').subscribe(jobId, () => load()).catch(() => {});
 

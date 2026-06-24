@@ -100,6 +100,34 @@ class PBClient:
             err_body = e.read().decode(errors="replace")[:400]
             raise RuntimeError(f"PB {method} {path}: HTTP {e.code} — {err_body}") from e
 
+    # --- Collections admin API (superuser) ---
+
+    def admin_request(self, method: str, path: str, body: dict | None = None) -> Any:
+        """Raw authenticated request to any PB endpoint (e.g. /api/collections).
+
+        Uses the superuser token. `path` must start with '/'. Returns parsed
+        JSON (or {} for empty bodies). Raises RuntimeError on HTTP errors —
+        callers can inspect the message for 'HTTP 404' etc.
+        """
+        return self._req(method, path, body)
+
+    def get_collection(self, name_or_id: str) -> dict | None:
+        """Return a collection definition by name or id, or None if missing."""
+        try:
+            return self._req("GET", f"/api/collections/{name_or_id}")
+        except RuntimeError as e:
+            if "HTTP 404" in str(e):
+                return None
+            raise
+
+    def create_collection(self, data: dict) -> dict:
+        """Create a collection. `data` must include at least name and type."""
+        return self._req("POST", "/api/collections", data)
+
+    def update_collection(self, name_or_id: str, data: dict) -> dict:
+        """Update an existing collection (e.g. set API rules)."""
+        return self._req("PATCH", f"/api/collections/{name_or_id}", data)
+
     # --- CRUD ---
 
     def get(self, collection: str, record_id: str) -> dict | None:

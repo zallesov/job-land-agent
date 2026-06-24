@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listJobs, type JobFilters } from "@/lib/db";
+import { unauthorizedResponse } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const unauth = unauthorizedResponse();
+  if (unauth) return unauth;
+
   const sp = req.nextUrl.searchParams;
   const filters: JobFilters = {
     status: sp.get("status") ?? undefined,

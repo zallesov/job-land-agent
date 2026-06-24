@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCommand } from "@/lib/db";
+import { unauthorizedResponse } from "@/lib/auth";
 import { readdirSync, readFileSync } from "fs";
 import path from "path";
 import os from "os";
@@ -10,6 +11,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = unauthorizedResponse();
+  if (unauth) return unauth;
+
   const { id } = params;
   const cmd = await getCommand(id);
   if (!cmd) return NextResponse.json({ error: "Command not found" }, { status: 404 });

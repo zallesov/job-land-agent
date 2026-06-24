@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { JobListClient } from "./components/JobList";
 import { addManualJobAction } from "./actions";
+import { requireAuthPage } from "@/lib/auth";
 
 // Jobs are fetched client-side (via /api/jobs) and kept live via PocketBase
 // realtime subscriptions — nothing dynamic is rendered server-side, so there
@@ -10,6 +11,8 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ [key: string]: string | undefined }>;
 }) {
+  requireAuthPage();
+
   const params = await searchParams;
   const initialJobId = params.job ?? null;
 

@@ -715,6 +715,7 @@ export function InterviewsClient() {
 
   useEffect(() => {
     const pb = new PocketBase(PB_URL);
+    pb.authStore.loadFromCookie(document.cookie);
     const JSON_FIELDS = ['interview_dates_json', 'contacts_json', 'emails_json'];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function norm(rec: any): Interview {
