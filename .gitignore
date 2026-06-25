@@ -45,5 +45,5 @@ venv/
 # macOS
 .DS_Store
 
-# Claude Code local settings (may contain API keys)
-.claude/settings.local.json
+# Claude Code local state (may contain API keys)
+.claude/
