@@ -11,17 +11,16 @@ env_requires:
 distribution_owned:
 - distribution.yaml
 - SOUL.md
+- AGENTS.md
+- CLAUDE.md
 - config.yaml
+- mcp.json
 - .env.EXAMPLE
 - README.md
-- package.json
-- pnpm-lock.yaml
-- pnpm-workspace.yaml
 - requirements.txt
 - start-chrome.sh
 - config
 - skills
 - scripts
-- dashboard
 source: github.com/zallesov/job-land-agent
 installed_at: '2026-06-16T10:10:53+00:00'

@@ -82,7 +82,7 @@ All flags can be set via environment variables with the `BLOGWATCHER_` prefix:
 
 | Variable | Description |
 |---|---|
-| `BLOGWATCHER_DB` | Path to SQLite database file |
+| `BLOGWATCHER_DB` | Path to Blogwatcher state file |
 | `BLOGWATCHER_WORKERS` | Number of concurrent scan workers (default: 8) |
 | `BLOGWATCHER_SILENT` | Only output "scan done" when scanning |
 | `BLOGWATCHER_YES` | Skip confirmation prompts |

@@ -1,5 +1,5 @@
 import { hasScope, type AuthInfo } from './auth.js';
-import { toPocketBaseDate } from './time.js';
+import { toJoblandDate } from './time.js';
 
 export type { AuthInfo } from './auth.js';
 
@@ -12,7 +12,7 @@ export type ListOptions = {
   perPage?: number;
 };
 
-export type PocketBaseGateway = {
+export type JoblandRecordGateway = {
   list: (collection: CollectionName, options: Required<ListOptions>) => Promise<unknown[]>;
   get: (collection: CollectionName, id: string) => Promise<unknown>;
   create: (collection: CollectionName, data: Record<string, unknown>) => Promise<unknown>;
@@ -60,7 +60,7 @@ function textSearchFilter(fields: string[], query: string): string {
 }
 
 export function createJoblandToolHandlers(
-  pb: PocketBaseGateway,
+  pb: JoblandRecordGateway,
   auth: AuthInfo,
   now: () => Date = () => new Date(),
 ) {
@@ -90,7 +90,7 @@ export function createJoblandToolHandlers(
 
     async jobs_delete(input: { id: string }) {
       assertScope(auth, 'jobs', 'write');
-      const stamp = toPocketBaseDate(now());
+      const stamp = toJoblandDate(now());
       return pb.update('jobs', input.id, { deleted_at: stamp, updated_at: stamp });
     },
 

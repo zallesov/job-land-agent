@@ -1,0 +1,13 @@
+{
+  "mcp_servers": {
+    "jobland": {
+      "url": "https://mcp.zall.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_JOBLAND_API_KEY}"
+      },
+      "timeout": 120,
+      "connect_timeout": 60,
+      "enabled": true
+    }
+  }
+}

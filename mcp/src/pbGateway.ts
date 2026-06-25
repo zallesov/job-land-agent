@@ -1,7 +1,7 @@
 import PocketBase from 'pocketbase';
 import type { McpTokenRecord } from './auth.js';
-import type { CollectionName, ListOptions, PocketBaseGateway } from './toolHandlers.js';
-import { toPocketBaseDate } from './time.js';
+import type { CollectionName, JoblandRecordGateway, ListOptions } from './toolHandlers.js';
+import { toJoblandDate } from './time.js';
 
 export type PocketBaseConfig = {
   url: string;
@@ -9,7 +9,7 @@ export type PocketBaseConfig = {
   adminPassword: string;
 };
 
-export class JoblandPocketBaseGateway implements PocketBaseGateway {
+export class JoblandPocketBaseGateway implements JoblandRecordGateway {
   private readonly pb: PocketBase;
   private authPromise: Promise<void> | null = null;
 
@@ -75,7 +75,6 @@ export class JoblandPocketBaseGateway implements PocketBaseGateway {
 
   async markMcpTokenUsed(id: string, usedAt: Date): Promise<void> {
     await this.ensureAuth();
-    await this.pb.collection('mcp_tokens').update(id, { last_used_at: toPocketBaseDate(usedAt) });
+    await this.pb.collection('mcp_tokens').update(id, { last_used_at: toJoblandDate(usedAt) });
   }
 }
-

@@ -2,8 +2,9 @@
 # (docker-compose.yml). Deployed on the hermes host at
 # /docker/hermes-workspace-dwys/ as compose project "hermes-workspace-dwys".
 #
-# Both services use prebuilt registry images (no local build), so "deploy" is
-# just: ship this file -> docker compose pull -> docker compose up -d.
+# The agent service uses a locally built JobLandAgent image. The workspace
+# service still uses the upstream image. Deploy builds and ships the local image
+# before recreating the stack.
 #
 # PERSISTENCE — do NOT `docker compose down -v` this stack. The named volumes
 # below hold the agent's auth tokens and workspace state:
@@ -16,7 +17,7 @@
 # (/docker/joblandagent/), not here.
 services:
   hermes-agent:
-    image: nousresearch/hermes-agent:latest
+    image: joblandagent-hermes-agent:latest
     restart: unless-stopped
     command: ["gateway", "run"]
     env_file:
@@ -42,6 +43,7 @@ services:
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_PASSWORD:-}
       POCKETBASE_URL: 'https://pb.zall.dev'
       NEXT_PUBLIC_POCKETBASE_URL: 'https://pb.zall.dev'
+      MCP_JOBLAND_API_KEY: ${MCP_JOBLAND_API_KEY:-}
     ports:
       - "127.0.0.1:9119:9119"
     volumes:
@@ -69,6 +71,7 @@ services:
       HERMES_DASHBOARD_URL: http://hermes-agent:9119
       HERMES_API_TOKEN: ${API_SERVER_KEY:-}
       HERMES_PASSWORD: ${HERMES_PASSWORD:-}
+      MCP_JOBLAND_API_KEY: ${MCP_JOBLAND_API_KEY:-}
       COOKIE_SECURE: '1'
       TRUST_PROXY: '1'
     volumes:

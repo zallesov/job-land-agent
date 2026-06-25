@@ -45,7 +45,7 @@ content = asyncio.run(read_page("https://wellfound.com/jobs/123-some-role"))
 curl -s http://localhost:9222/json/version | python3 -m json.tool
 ```
 
-Returns Chrome version info if running. If not running, check `scripts/providers/` for how the pipeline starts Chrome, or run `check_auth.py` for the relevant provider.
+Returns Chrome version info if running. If not running, use the visible-browser auth workflow for the relevant provider.
 
 ## Extract Structured Data (Next.js / React apps)
 

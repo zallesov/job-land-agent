@@ -346,7 +346,7 @@ The registry of record is `hermes_cli/commands.py` — every consumer
 ~/.hermes/.env              API keys and secrets
 $HERMES_HOME/skills/        Installed skills
 ~/.hermes/sessions/         Gateway routing index, request dumps, *.jsonl transcripts (and optional per-session JSON snapshots when sessions.write_json_snapshots: true)
-~/.hermes/state.db          Canonical session store (SQLite + FTS5)
+~/.hermes/state.db          Canonical session store
 ~/.hermes/logs/             Gateway and error logs
 ~/.hermes/auth.json         OAuth tokens and credential pools
 ~/.hermes/hermes-agent/     Source code (if git-installed)
@@ -687,7 +687,7 @@ User docs: https://hermes-agent.nousresearch.com/docs/user-guide/features/curato
 
 ### Kanban (multi-agent work queue)
 
-Durable SQLite board for multi-profile / multi-worker collaboration.
+Durable board for multi-profile / multi-worker collaboration.
 Users drive it via `hermes kanban <verb>`; dispatcher-spawned workers
 see a focused `kanban_*` toolset gated by `HERMES_KANBAN_TASK`, and
 orchestrator profiles can opt into the broader `kanban` toolset. Normal
@@ -893,7 +893,7 @@ hermes-agent/
 ├── model_tools.py        # Tool discovery and dispatch
 ├── toolsets.py           # Toolset definitions
 ├── cli.py                # Interactive CLI (HermesCLI)
-├── hermes_state.py       # SQLite session store
+├── hermes_state.py       # Session store
 ├── agent/                # Prompt builder, context compression, memory, model routing, credential pooling, skill dispatch
 ├── hermes_cli/           # CLI subcommands, config, setup, commands
 │   ├── commands.py       # Slash command registry (CommandDef)

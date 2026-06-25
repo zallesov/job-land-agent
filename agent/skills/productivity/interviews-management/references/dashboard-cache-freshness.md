@@ -1,7 +1,7 @@
 # Dashboard cache freshness for interview rows
 
 Observed symptom:
-- PocketBase/API has the updated `interview_dates_json` array, but `/interviews` still shows only the old single date in the UI.
+- JobLandMCP/API has the updated `interview_dates_json` array, but `/interviews` still shows only the old single date in the UI.
 
 Root cause in this profile:
 - The Next.js interviews page was serving a stale server-rendered snapshot.

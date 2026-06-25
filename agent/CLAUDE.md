@@ -1,31 +1,21 @@
 # JobLandAgent — Claude Directives
 
-Part of the `joblandagent` monorepo (`~/joblandagent/`): `agent/` (this dir), `dashboard/`, `db/`, `mcp/`, `scripts/`.
-This directory is the agent's working root — all relative paths in skills/scripts resolve from here.
+Part of the `joblandagent` monorepo (`~/joblandagent/`). This directory is the agent working root.
 
-## Skills location
+## Skills Location
 
-**All project skills live in `skills/`.** Never create skills outside this directory.
+All project skills live in `skills/`. Never create skills outside this directory.
 
-## Scripts structure
+## JobLand Data Access
 
-Provider-specific scrapers: `scripts/providers/<name>/scrape_jobs.py`
-Generic pipeline scripts: `scripts/` root (scraping_pipeline.py, pb_client.py, etc.)
-**Never create standalone `scrape_<provider>.py` scripts in `scripts/` root.**
+All JobLand job and interview records must be accessed through the configured JobLandMCP server.
 
-All providers run via the unified pipeline:
-```
-python3 scripts/scraping_pipeline.py --provider <name>
-```
+Do not use local scripts, direct backend clients, SQL, database files, migration tooling, or storage-specific assumptions for JobLand records. If a requested operation is not available through JobLandMCP, report the missing MCP capability instead of bypassing it.
 
-## Database
+## Browser Work
 
-All job data lives in remote PocketBase (`POCKETBASE_URL` in `.env`). Never use sqlite.
-DB schema/migration tooling lives in `../db/` (sibling dir), not here — `scripts/pb_client.py`
-stays in this repo since pipeline modules import it directly (`from scripts.pb_client import get_pb`).
-This will change once the agent talks to PocketBase only through `../mcp/`.
+Use the visible authenticated browser for provider login, scraping-like inspection, enrichment-like inspection, and application forms. The user should be able to watch browser interactions.
 
 ## Dashboard
 
-The dashboard moved to `../dashboard/` — separate dev/deploy cycle, no longer reachable from
-agent skills. Do not reintroduce a `run-dashboard` skill here.
+The dashboard is outside the agent skills workflow. Do not reintroduce a dashboard skill here.

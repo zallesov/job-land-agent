@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createJoblandToolHandlers, type AuthInfo, type PocketBaseGateway } from '../src/toolHandlers.js';
+import { createJoblandToolHandlers, type AuthInfo, type JoblandRecordGateway } from '../src/toolHandlers.js';
 
 const fullAuth: AuthInfo = {
   tokenId: 'env:MCP_API_TOKEN',
@@ -7,7 +7,7 @@ const fullAuth: AuthInfo = {
   scopes: ['jobs:*', 'interviews:*'],
 };
 
-function gateway(): PocketBaseGateway {
+function gateway(): JoblandRecordGateway {
   return {
     list: vi.fn(async () => [{ id: 'job_1', title: 'AI Engineer' }]),
     get: vi.fn(async (_collection, id) => ({ id, title: 'AI Engineer' })),

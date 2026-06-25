@@ -15,7 +15,7 @@ Use this when a Hermes profile was installed/copied without `.git`, but the user
 
 - The active profile root already contains source-like files (`scripts/`, `skills/`, `dashboard/`, `tests/`, `package.json`) but is not a git repo.
 - The user wants to keep local profile changes as the source of truth.
-- The profile also contains runtime state that must not be accidentally committed (`jobs.db`, session DBs, auth files, caches, `home/`, etc.).
+- The profile also contains runtime state that must not be accidentally committed (session stores, auth files, caches, `home/`, etc.).
 
 ## Core idea
 
