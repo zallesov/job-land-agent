@@ -1,0 +1,8 @@
+{
+	"dependencies": {
+		"agent-browser": "^0.30.1"
+	},
+	"allowScripts": {
+		"file:.pnpm/agent-browser@0.30.1/node_modules/agent-browser": true
+	}
+}
