@@ -5,6 +5,7 @@ import PocketBase from "pocketbase";
 import { JobDetail } from "./JobDetail";
 import { updateJobAction } from "../actions";
 import { Logo } from "./Logo";
+import { JobIdChip } from "./JobIdChip";
 import { PB_URL } from "@/lib/pb";
 
 export const PIPELINE_STATUS_COLORS: Record<string, string> = {
@@ -300,10 +301,12 @@ export function JobListClient({
                 {/* Title */}
                 <div className="text-sm font-semibold truncate leading-tight mb-0.5"
                   style={{ color: "var(--text-1)" }}>
-                  <span className="font-data font-bold mr-1.5" style={{ color: "var(--text-2)", fontSize: 12 }}>
-                    #{parseInt(job.id) || job.id}
-                  </span>
                   {job.title ?? "(no title)"}
+                </div>
+
+                {/* ID */}
+                <div className="mb-0.5">
+                  <JobIdChip id={job.id} />
                 </div>
 
                 {/* Company + location + source */}

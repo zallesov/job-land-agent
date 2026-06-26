@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import PocketBase from "pocketbase";
 import { CommandButton } from "./CommandButton";
 import { PROVIDER_COLORS } from "./JobList";
+import { JobIdChip } from "./JobIdChip";
 import { PB_URL } from "@/lib/pb";
 
 const USER_STATUSES = ["interesting","not_interesting","applied","rejected","interviewing","offer"];
@@ -217,7 +218,7 @@ async function saveNote() {
         borderBottom: "1px solid var(--border)",
         flexWrap: "wrap",
       }}>
-        <span className="font-data font-bold" style={{ color: "var(--text-1)", fontSize: 13 }}>#{job.id}</span>
+        <JobIdChip id={job.id} size="md" />
         {job.provider && (
           <span className="font-data text-xs px-1.5 py-px rounded"
             style={{

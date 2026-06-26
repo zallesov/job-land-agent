@@ -2,6 +2,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import PocketBase from "pocketbase";
+import { JobIdChip } from "@/app/components/JobIdChip";
 import type { Interview, EmailMessage, InterviewDate, Contact } from "@/lib/db";
 import { PB_URL } from "@/lib/pb";
 
@@ -844,8 +845,8 @@ export function InterviewsClient() {
                   }}
                 >
                   {/* ID */}
-                  <td className="px-3 py-2 w-10 shrink-0">
-                    <span className="font-data text-xs select-all" style={{ color: "var(--text-3)" }}>{parseInt(row.id) || row.id}</span>
+                  <td className="px-3 py-2 shrink-0">
+                    <JobIdChip id={row.id} />
                   </td>
 
                   {/* Expand toggle */}
