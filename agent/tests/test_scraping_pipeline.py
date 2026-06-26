@@ -14,7 +14,7 @@ def _job(company="Acme", title="SWE", url="http://x.com"):
     )
 
 
-def test_happy_path(pb):
+def test_happy_path(mcp):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
     jid = "fake000000000001"
@@ -46,7 +46,7 @@ def test_happy_path(pb):
     mock_notify.assert_called_once_with(enrich_failures=[], screen_failures=[])
 
 
-def test_auth_error_stops_pipeline(pb):
+def test_auth_error_stops_pipeline(mcp):
     from scripts.providers.greenhouse.check_auth import AuthError
     mock_check_auth = MagicMock(side_effect=AuthError("timed out"))
     mock_scrape = MagicMock()
@@ -59,7 +59,7 @@ def test_auth_error_stops_pipeline(pb):
     mock_scrape.assert_not_called()
 
 
-def test_enrich_failure_skips_screen_for_that_job(pb):
+def test_enrich_failure_skips_screen_for_that_job(mcp):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[_job()])
     jid = "fake000000000002"
@@ -83,7 +83,7 @@ def test_enrich_failure_skips_screen_for_that_job(pb):
     assert (jid, "timeout") in failures
 
 
-def test_titles_passed_to_scrape_jobs(pb):
+def test_titles_passed_to_scrape_jobs(mcp):
     mock_check_auth = MagicMock()
     mock_scrape = MagicMock(return_value=[])
 

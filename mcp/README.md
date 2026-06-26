@@ -77,10 +77,12 @@ mcp_servers:
 
 ## Tools
 
-- `jobs_list`, `jobs_get`, `jobs_create`, `jobs_update`, `jobs_delete`
+- `jobs_list`, `jobs_get`, `jobs_create`, `jobs_update`, `jobs_delete`, `jobs_delete_batch`
 - `jobs_find_by_url`, `jobs_search`
 - `interviews_list`, `interviews_get`, `interviews_create`
 - `interviews_update`, `interviews_delete`, `interviews_search`
 
 `jobs_delete` is a soft delete: it sets `deleted_at` and `updated_at`.
+`jobs_delete_batch` performs the same soft delete for each id in `ids`.
+`jobs_search` accepts exactly one of `url`, `id`, `company`, or `title`.
 `interviews_delete` hard-deletes the interview record.

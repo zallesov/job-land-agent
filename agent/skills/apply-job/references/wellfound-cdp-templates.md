@@ -1,11 +1,34 @@
 # WellFound CDP Command Templates
 
-Reusable `browser_cdp` payloads for WellFound application forms.
+Low-level `Runtime.evaluate` payloads for WellFound application forms. These are the
+**fallback** for React-controlled fields that ignore a plain `agent-browser fill`.
+For navigation, reading, snapshots, simple fields, and screenshots, use the
+**agent-browser** CLI first (see the `read-web-pages` skill).
 
 ## Prerequisites
 
-- Chrome running at `localhost:9222`
-- Target ID from `browser_cdp(method="Target.getTargets")` — find the tab with the WellFound job URL
+- Visible Chrome running at `localhost:9222` (`bash agent/start-chrome.sh`)
+- agent-browser reset to that browser: `agent-browser close --all` once, then drive it
+  with `agent-browser --cdp 9222 <cmd>`. Without `--cdp 9222` it uses its own headless
+  browser — wrong session, invisible, and DataDome-blocked.
+
+## agent-browser first (most fields)
+
+```bash
+agent-browser --cdp 9222 open <wellfound job apply url>
+agent-browser --cdp 9222 snapshot -i          # find the Apply button + form refs
+agent-browser --cdp 9222 click @e<apply>
+agent-browser --cdp 9222 fill  @e<field> "value"
+```
+
+Drop to the raw `Runtime.evaluate` templates below only when a React field does not
+update via `fill` (custom value setter needed), or for a bulk one-shot fill.
+
+## Raw CDP (React forms / bulk fill)
+
+- Run via `agent-browser --cdp 9222 eval '<expression>'`, or `browser_cdp(method="Runtime.evaluate", ...)`.
+- For `browser_cdp`, get the Target ID from `browser_cdp(method="Target.getTargets")` —
+  find the tab with the WellFound job URL.
 
 ## Click Apply button
 

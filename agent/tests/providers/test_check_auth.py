@@ -52,12 +52,6 @@ def test_jobleads_check_auth():
 
 
 @pytest.mark.e2e
-def test_wellfound_check_auth():
-    from scripts.providers.wellfound.check_auth import check_auth
-    check_auth(CDP_URL)
-
-
-@pytest.mark.e2e
 def test_sprout_check_auth():
     from scripts.providers.sprout.check_auth import check_auth
     check_auth(CDP_URL)

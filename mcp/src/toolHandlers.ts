@@ -22,6 +22,15 @@ export type JoblandRecordGateway = {
 
 export type JoblandToolHandlers = ReturnType<typeof createJoblandToolHandlers>;
 
+export type JobSearchInput = {
+  url?: string;
+  id?: string;
+  company?: string;
+  title?: string;
+  page?: number;
+  perPage?: number;
+};
+
 const SYSTEM_FIELDS = new Set(['id', 'collectionId', 'collectionName', 'created', 'updated']);
 
 function assertScope(auth: AuthInfo, collection: CollectionName, action: 'read' | 'write'): void {
@@ -59,15 +68,42 @@ function textSearchFilter(fields: string[], query: string): string {
   return `(${fields.map((field) => `${field} ~ "${safe}"`).join(' || ')})`;
 }
 
+function assertNonEmptyIds(ids: string[]): void {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new Error('ids must contain at least one id');
+  }
+}
+
+function jobSearchFilter(input: JobSearchInput): string {
+  const selectors = [
+    input.url ? { field: 'url', value: input.url, op: '=' } : null,
+    input.id ? { field: 'id', value: input.id, op: '=' } : null,
+    input.company ? { field: 'posted_company_name', value: input.company, op: '~' } : null,
+    input.title ? { field: 'title', value: input.title, op: '~' } : null,
+  ].filter((selector): selector is { field: string; value: string; op: '=' | '~' } => selector !== null);
+
+  if (selectors.length !== 1) {
+    throw new Error('Provide exactly one of: url, id, company, title');
+  }
+
+  const selector = selectors[0];
+  return `${selector.field} ${selector.op} "${esc(selector.value)}" && deleted_at = null`;
+}
+
 export function createJoblandToolHandlers(
   pb: JoblandRecordGateway,
   auth: AuthInfo,
   now: () => Date = () => new Date(),
 ) {
   return {
-    async jobs_list(input: ListOptions = {}) {
+    async jobs_list(input: ListOptions & { origin?: string; status?: string } = {}) {
       assertScope(auth, 'jobs', 'read');
-      const filter = input.filter ? `(${input.filter}) && deleted_at = null` : 'deleted_at = null';
+      const clauses: string[] = [];
+      if (input.filter) clauses.push(`(${input.filter})`);
+      if (input.origin) clauses.push(`provider = "${esc(input.origin)}"`);
+      if (input.status) clauses.push(`status = "${esc(input.status)}"`);
+      clauses.push('deleted_at = null');
+      const filter = clauses.join(' && ');
       return pb.list('jobs', listOptions({ ...input, filter }, { sort: '-created_at', perPage: 100 }));
     },
 
@@ -94,6 +130,16 @@ export function createJoblandToolHandlers(
       return pb.update('jobs', input.id, { deleted_at: stamp, updated_at: stamp });
     },
 
+    async jobs_delete_batch(input: { ids: string[] }) {
+      assertScope(auth, 'jobs', 'write');
+      assertNonEmptyIds(input.ids);
+      const stamp = toJoblandDate(now());
+      await Promise.all(input.ids.map((id) => (
+        pb.update('jobs', id, { deleted_at: stamp, updated_at: stamp })
+      )));
+      return { ok: true, deleted: input.ids };
+    },
+
     async jobs_find_by_url(input: { url: string }) {
       assertScope(auth, 'jobs', 'read');
       const items = await pb.list('jobs', {
@@ -105,9 +151,9 @@ export function createJoblandToolHandlers(
       return items[0] ?? null;
     },
 
-    async jobs_search(input: { query: string; page?: number; perPage?: number }) {
+    async jobs_search(input: JobSearchInput) {
       assertScope(auth, 'jobs', 'read');
-      const filter = `${textSearchFilter(['title', 'posted_company_name', 'url', 'location', 'comment'], input.query)} && deleted_at = null`;
+      const filter = jobSearchFilter(input);
       return pb.list('jobs', listOptions({ filter, page: input.page, perPage: input.perPage }, { sort: '-updated_at' }));
     },
 

@@ -85,25 +85,6 @@ def test_jobleads_accepts_location_dict():
     assert len(result) == 1
 
 
-def test_wellfound_uses_city_country_query():
-    """wellfound scrape_jobs passes 'City, Country' to change_location."""
-    from scripts.providers.wellfound import scrape_jobs as mod
-
-    pw_mock = _make_playwright_mock([])
-
-    with patch.object(mod, "sync_playwright", return_value=pw_mock), \
-         patch.object(mod, "apply_filters"), \
-         patch.object(mod, "change_location") as mock_change_location, \
-         patch.object(mod, "scroll_to_load_all"), \
-         patch.object(mod, "collect_wellfound", return_value=[]):
-        mod.scrape_jobs(BERLIN, "http://localhost:9222")
-
-    mock_change_location.assert_called_once()
-    location_arg = mock_change_location.call_args[0][1]
-    assert "Berlin" in location_arg
-    assert "Germany" in location_arg
-
-
 def test_sprout_passes_titles_to_collect():
     """sprout scrape_jobs passes titles to collect_sprout."""
     from scripts.providers.sprout import scrape_jobs as mod

@@ -8,6 +8,10 @@ custom_providers:
   base_url: https://api.deepseek.com/v1
   key_env: DEEPSEEK_API_KEY
   api_mode: chat_completions
+- name: openrouter
+  base_url: https://openrouter.ai/api/v1
+  key_env: OPENROUTER_API_KEY
+  api_mode: chat_completions
 toolsets:
 - hermes-cli
 agent:

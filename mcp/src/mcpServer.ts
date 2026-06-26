@@ -11,10 +11,29 @@ const listSchema = z.object({
   page: z.number().int().positive().optional(),
   perPage: z.number().int().positive().max(500).optional(),
 });
+const jobsListSchema = listSchema.extend({
+  origin: z.string().optional(),
+  status: z.string().optional(),
+});
 const searchSchema = z.object({
   query: z.string().min(1),
   page: z.number().int().positive().optional(),
   perPage: z.number().int().positive().max(500).optional(),
+});
+const jobsSearchSchema = z.object({
+  url: z.string().url().optional(),
+  id: z.string().min(1).optional(),
+  company: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  page: z.number().int().positive().optional(),
+  perPage: z.number().int().positive().max(500).optional(),
+}).refine((value) => (
+  [value.url, value.id, value.company, value.title].filter((selector) => selector !== undefined).length === 1
+), {
+  message: 'Provide exactly one of: url, id, company, title',
+});
+const batchDeleteSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
 });
 
 function asToolResult(value: unknown) {
@@ -30,8 +49,8 @@ export function createMcpServer(pb: JoblandRecordGateway, auth: AuthInfo): McpSe
 
   server.registerTool('jobs_list', {
     title: 'List jobs',
-    description: 'List non-deleted jobs with optional filter, sort, and pagination.',
-    inputSchema: listSchema,
+    description: 'List non-deleted jobs with optional filter, sort, and pagination. Convenience params: "origin" filters by the job provider (e.g. csvfeed, wellfound, sprout, greenhouse) and "status" filters by job status (e.g. listed, enriched, screened, screen_failed). Both combine (AND) with each other and with any raw filter.',
+    inputSchema: jobsListSchema,
   }, async (input) => asToolResult(await tools.jobs_list(input)));
 
   server.registerTool('jobs_get', {
@@ -58,6 +77,12 @@ export function createMcpServer(pb: JoblandRecordGateway, auth: AuthInfo): McpSe
     inputSchema: idSchema,
   }, async (input) => asToolResult(await tools.jobs_delete(input)));
 
+  server.registerTool('jobs_delete_batch', {
+    title: 'Soft-delete jobs',
+    description: 'Soft-delete multiple jobs by setting deleted_at and updated_at for every id. Does not hard-delete.',
+    inputSchema: batchDeleteSchema,
+  }, async (input) => asToolResult(await tools.jobs_delete_batch(input)));
+
   server.registerTool('jobs_find_by_url', {
     title: 'Find job by URL',
     description: 'Find the first non-deleted job matching an exact URL.',
@@ -66,8 +91,8 @@ export function createMcpServer(pb: JoblandRecordGateway, auth: AuthInfo): McpSe
 
   server.registerTool('jobs_search', {
     title: 'Search jobs',
-    description: 'Search common job text fields.',
-    inputSchema: searchSchema,
+    description: 'Search jobs by exactly one selector: url, id, company, or title.',
+    inputSchema: jobsSearchSchema,
   }, async (input) => asToolResult(await tools.jobs_search(input)));
 
   server.registerTool('interviews_list', {

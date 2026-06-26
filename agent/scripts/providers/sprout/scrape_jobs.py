@@ -4,7 +4,6 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from scripts.pb_client import get_pb
 from scripts.pipeline.types import ShallowJob
 from scripts.providers._shared.job_filter import is_relevant
 
@@ -213,7 +212,6 @@ def click_card_and_get_job_url(page, card_index: int) -> str | None:
 
 def collect_sprout(page, titles: list[str], location: str, country: str) -> list[dict]:
     all_jobs: list[dict] = []
-    pb = get_pb()
 
     context = page.context
     for p in list(context.pages):
@@ -233,17 +231,11 @@ def collect_sprout(page, titles: list[str], location: str, country: str) -> list
         if not summaries:
             continue
 
-        db_keys = [f"{summary['company']}::{summary['title']}" for summary in summaries]
-        known_keys = pb.get_dedup_keys(db_keys) if db_keys else set()
-
+        # Cross-DB dedup happens centrally in the pipeline (via MCP); here we
+        # only drop repeats within this run.
         for i, summary in enumerate(summaries):
             dup_key = f"{summary['company']}|{summary['title']}"
             if any(j.get("_dup_key") == dup_key for j in all_jobs):
-                continue
-
-            db_key = f"{summary['company']}::{summary['title']}"
-            if db_key in known_keys:
-                print(f"    [skip] {summary['company'][:20]} - {summary['title'][:50]} (in DB)", flush=True)
                 continue
 
             print(f"    [{len(all_jobs)+1}] {summary['company'][:20]} - {summary['title'][:50]}", flush=True)

@@ -67,10 +67,10 @@ def enrich_job(
     job_id: Any,
     cdp_url: str = _DEFAULT_CDP,
 ) -> HermesResult:
-    from scripts.pb_client import get_pb
-    pb = get_pb()
+    from scripts.mcp_client import get_client
+    mcp = get_client()
 
-    job = pb.get_job(job_id)
+    job = mcp.get_job(job_id)
     if job is None:
         return HermesResult(success=False, data={}, error=f"job {job_id} not found", raw_output="")
 
@@ -84,7 +84,7 @@ def enrich_job(
     if callable(hermes_call):
         result = hermes_call("enrich-job", context)
         if not result.success:
-            pb.update_job_status(job_id, "enrich_failed", comment=result.error)
+            mcp.update_job_status(job_id, "enrich_failed", comment=result.error)
             return result
         data = result.data
     else:
@@ -107,7 +107,7 @@ def enrich_job(
                     page.close()
         except Exception as e:
             err = str(e)[:300]
-            pb.update_job_status(job_id, "enrich_failed", comment=err)
+            mcp.update_job_status(job_id, "enrich_failed", comment=err)
             return HermesResult(success=False, data={}, error=err, raw_output="")
 
     description = data.get("description") or ""
@@ -118,7 +118,7 @@ def enrich_job(
 
     if not callable(hermes_call) and (not description or len(description) < 100):
         err = "extraction failed: description too short"
-        pb.update_job_status(job_id, "enrich_failed", comment=err)
+        mcp.update_job_status(job_id, "enrich_failed", comment=err)
         return HermesResult(success=False, data={}, error=err, raw_output="")
 
     update: dict = {
@@ -132,6 +132,6 @@ def enrich_job(
         update["salary_range"] = salary_range
     if date_posted:
         update["date_posted"] = date_posted
-    pb.update_job(job_id, **update)
+    mcp.update_job(job_id, **update)
 
     return HermesResult(success=True, data=data, error=None, raw_output="")

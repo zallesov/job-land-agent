@@ -10,7 +10,8 @@ Usage:
   python3 scripts/scraping_pipeline.py --provider jobleads --titles "Software Engineer,AI Engineer"
 
 Options:
-  --provider <name>   Provider: greenhouse | jobleads | wellfound | sprout | hirify
+  --provider <name>   Provider: greenhouse | jobleads | sprout | hirify
+                      (wellfound is handled by the wellfound-flow skill, not this pipeline)
   --titles <str>      Comma-separated title search terms (optional; overrides config)
   --cdp-url <url>     CDP endpoint (default: http://localhost:9222)
 """
@@ -31,7 +32,7 @@ from scripts.pipeline.notify import send_daily_digest
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_CDP = "http://localhost:9222"
-PROVIDERS = {"greenhouse", "jobleads", "wellfound", "sprout", "hirify", "csvfeed"}
+PROVIDERS = {"greenhouse", "jobleads", "sprout", "hirify", "csvfeed"}
 
 
 def run(
@@ -61,7 +62,11 @@ def run(
 
     print(f"[pipeline] {provider}: scraped {len(raw_jobs)} jobs", flush=True)
 
-    new_jobs = dedup_jobs(raw_jobs)
+    from scripts.mcp_client import get_client
+    existing = get_client().list_all_jobs()
+    print(f"[pipeline] {len(existing)} existing jobs from MCP", flush=True)
+
+    new_jobs = dedup_jobs(raw_jobs, existing)
     print(f"[pipeline] {len(new_jobs)} new after dedup", flush=True)
 
     job_ids = ingest_jobs(new_jobs)

@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from tests.fake_pb import FakePBClient
+from tests.fake_mcp import FakeMCPClient
 
 
 @pytest.fixture
-def pb(monkeypatch):
-    """In-memory PocketBase double. Never touches the network or real PocketBase."""
-    fake = FakePBClient()
-    monkeypatch.setattr("scripts.pb_client.get_pb", lambda: fake)
+def mcp(monkeypatch):
+    """In-memory MCP client double. Never touches the network or the MCP server."""
+    fake = FakeMCPClient()
+    monkeypatch.setattr("scripts.mcp_client.get_client", lambda: fake)
     return fake
 
 
